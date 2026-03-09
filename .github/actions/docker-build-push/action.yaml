@@ -1,0 +1,124 @@
+name: 'Docker Build and Push'
+description: 'Login to container registry and build/push Docker image'
+
+inputs:
+  registry_type:
+    description: 'Registry provider: gar, gcr, ecr, acr, dockerhub, ghcr, custom'
+    required: true
+  image_registry:
+    description: 'Registry URL. Required for gar/ecr/acr/custom. Auto-defaults for gcr (gcr.io), dockerhub (docker.io), ghcr (ghcr.io)'
+    required: false
+    default: ''
+  registry_project:
+    description: 'Project/account/namespace within registry. Used to construct image path: REGISTRY/PROJECT/REPO/SVC:TAG'
+    required: false
+    default: ''
+  registry_repo:
+    description: 'Repository name within project. Used to construct image path: REGISTRY/PROJECT/REPO/SVC:TAG'
+    required: false
+    default: ''
+  svc_name:
+    description: 'Service name'
+    required: true
+  image_tag:
+    description: 'Image tag'
+    required: true
+  dockerfile_path:
+    description: 'Path to Dockerfile directory'
+    required: false
+    default: '.'
+  build_arguments:
+    description: 'Docker build arguments'
+    required: false
+    default: ''
+  registry_credentials:
+    description: 'Registry auth. Required for all types. Format: GCP SA JSON (gar/gcr), AWS JSON (ecr), Azure JSON (acr), password/token (dockerhub/ghcr/custom)'
+    required: false
+    default: ''
+  registry_username:
+    description: 'Username. Required for dockerhub/ghcr/custom (defaults to github_actor)'
+    required: false
+    default: ''
+  # ECR-specific
+  aws_access_key_id:
+    description: 'AWS access key ID. Required for ECR (via input or registry_credentials JSON)'
+    required: false
+    default: ''
+  aws_region:
+    description: 'AWS region for ECR. Auto-extracted from IMAGE_REGISTRY URL if not provided'
+    required: false
+    default: ''
+  # ACR-specific
+  azure_client_id:
+    description: 'Azure client ID. Required for ACR (via input or registry_credentials JSON)'
+    required: false
+    default: ''
+  azure_tenant_id:
+    description: 'Azure tenant ID. Required for ACR (via input or registry_credentials JSON)'
+    required: false
+    default: ''
+  github_actor:
+    description: 'GitHub actor. Used as fallback for registry_username in dockerhub/ghcr/custom'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token. Fallback for registry_credentials in GHCR'
+    required: false
+    default: ''
+
+outputs:
+  image:
+    description: 'Full image path with tag'
+    value: ${{ steps.output.outputs.image }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ============================================================
+    # RESOLVE IMAGE PATH
+    # ============================================================
+    - name: Resolve image path
+      id: registry
+      uses: ./.github/actions/resolve-image-path
+      with:
+        registry_type: ${{ inputs.registry_type }}
+        image_registry: ${{ inputs.image_registry }}
+        registry_project: ${{ inputs.registry_project }}
+        registry_repo: ${{ inputs.registry_repo }}
+        svc_name: ${{ inputs.svc_name }}
+        image_tag: ${{ inputs.image_tag }}
+
+    # ============================================================
+    # LOGIN TO REGISTRY
+    # ============================================================
+    - name: Login to registry
+      uses: ./.github/actions/registry-login
+      with:
+        registry_type: ${{ inputs.registry_type }}
+        image_registry: ${{ steps.registry.outputs.image_registry }}
+        credentials: ${{ inputs.registry_credentials }}
+        username: ${{ inputs.registry_username }}
+        aws_access_key_id: ${{ inputs.aws_access_key_id }}
+        aws_region: ${{ inputs.aws_region }}
+        azure_client_id: ${{ inputs.azure_client_id }}
+        azure_tenant_id: ${{ inputs.azure_tenant_id }}
+        github_actor: ${{ inputs.github_actor }}
+        github_token: ${{ inputs.github_token }}
+
+    # ============================================================
+    # BUILD AND PUSH
+    # ============================================================
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v6
+      with:
+        push: true
+        context: .
+        file: ${{ inputs.dockerfile_path }}/Dockerfile
+        tags: ${{ steps.registry.outputs.image }}
+        build-args: |
+          ${{ inputs.build_arguments }}
+
+    - name: Output image
+      id: output
+      shell: bash
+      run: echo "image=${{ steps.registry.outputs.image }}" >> "$GITHUB_OUTPUT"

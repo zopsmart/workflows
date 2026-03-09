@@ -1,0 +1,242 @@
+name: "Prod Deploy"
+
+on:
+  workflow_call:
+    inputs:
+      # ============================================================
+      # SERVICE
+      # ============================================================
+      SVC_NAME:
+        description: 'Service name (k8s deployment/cronjob name)'
+        required: true
+        type: string
+
+      # ============================================================
+      # REGISTRY
+      # ============================================================
+      REGISTRY_TYPE:
+        description: 'Registry provider: gar, gcr, ecr, acr, dockerhub, ghcr, custom (auto-detected from IMAGE_REGISTRY)'
+        required: false
+        type: string
+        default: ''
+      IMAGE_REGISTRY:
+        description: 'Registry URL (required for gar/ecr/acr/custom, auto-set for gcr/dockerhub/ghcr)'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_PROJECT:
+        description: 'Project/namespace within registry'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_REPO:
+        description: 'Repository name within project'
+        required: false
+        type: string
+        default: ''
+
+      # ============================================================
+      # CLUSTER
+      # ============================================================
+      CLUSTER_PROJECT:
+        description: 'GCP project (required for GKE)'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_NAME:
+        description: 'Kubernetes cluster name (required for GKE/EKS/AKS)'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_REGION:
+        description: 'Cluster region (required for GKE/EKS)'
+        required: false
+        type: string
+        default: ''
+      AZURE_RESOURCE_GROUP:
+        description: 'Azure resource group (required for AKS)'
+        required: false
+        type: string
+        default: ''
+
+      # ============================================================
+      # DEPLOY
+      # ============================================================
+      NAMESPACE:
+        description: 'Kubernetes namespace'
+        required: false
+        type: string
+        default: ''
+      TYPE:
+        description: 'Workload type: deployment or cron'
+        required: false
+        type: string
+        default: 'deployment'
+      DEPLOY_METHOD:
+        description: 'Deploy method: kubectl or helm'
+        required: false
+        type: string
+        default: 'kubectl'
+      HELM_VALUES_PATH:
+        description: 'Path to Helm values file (required if DEPLOY_METHOD=helm)'
+        required: false
+        type: string
+        default: ''
+
+      # ============================================================
+      # CONFIGMAP
+      # ============================================================
+      ENV_FILE_PATH:
+        description: 'Path to env file (empty string skips configmap)'
+        required: false
+        type: string
+        default: '__default__'
+      REACT_APP:
+        description: 'Enable React-specific configmap format'
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      # ============================================================
+      # REGISTRY SECRETS
+      # ============================================================
+      REGISTRY_CREDENTIALS:
+        description: 'Registry auth (GCP SA JSON, AWS JSON, Azure JSON, or token)'
+        required: false
+
+      # ============================================================
+      # CLUSTER SECRETS
+      # ============================================================
+      PROD_CLUSTER_CREDENTIALS:
+        description: 'Prod cluster auth (GCP SA JSON, AWS JSON, Azure JSON, or base64 kubeconfig)'
+        required: false
+      CLUSTER_CREDENTIALS:
+        description: 'Fallback cluster auth (used if PROD_CLUSTER_CREDENTIALS not provided)'
+        required: false
+
+      # ============================================================
+      # OTHER SECRETS
+      # ============================================================
+      PAT:
+        description: 'GitHub PAT for Helm repo access'
+        required: false
+
+jobs:
+  # ============================================================
+  # RESOLVE CONFIGURATION
+  # ============================================================
+  resolve-registry:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/_resolve-registry-config.yaml
+    with:
+      REGISTRY_TYPE: ${{ inputs.REGISTRY_TYPE }}
+      IMAGE_REGISTRY: ${{ inputs.IMAGE_REGISTRY }}
+      REGISTRY_PROJECT: ${{ inputs.REGISTRY_PROJECT }}
+      REGISTRY_REPO: ${{ inputs.REGISTRY_REPO }}
+
+  resolve-deploy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/_resolve-deploy-config.yaml
+    with:
+      ENVIRONMENT: prod
+      CLUSTER_PROJECT: ${{ inputs.CLUSTER_PROJECT }}
+      CLUSTER_NAME: ${{ inputs.CLUSTER_NAME }}
+      CLUSTER_REGION: ${{ inputs.CLUSTER_REGION }}
+      AZURE_RESOURCE_GROUP: ${{ inputs.AZURE_RESOURCE_GROUP }}
+      NAMESPACE: ${{ inputs.NAMESPACE }}
+      ENV_FILE_PATH: ${{ inputs.ENV_FILE_PATH }}
+
+  # ============================================================
+  # VALIDATE TAG
+  # ============================================================
+  validate-tag:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.validate.outputs.valid }}
+      previous_tag: ${{ steps.validate.outputs.previous_tag }}
+      error: ${{ steps.validate.outputs.error }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag
+        id: validate
+        uses: ./.github/actions/validate-tag
+        with:
+          tag: ${{ github.ref_name }}
+
+      - name: Fail if invalid
+        if: steps.validate.outputs.valid != 'true'
+        run: |
+          echo "::error::${{ steps.validate.outputs.error }}"
+          exit 1
+
+  # ============================================================
+  # CHECK CHANGES
+  # ============================================================
+  check-changes:
+    needs: [resolve-deploy, validate-tag]
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.validate-tag.outputs.valid == 'true'
+    uses: ./.github/workflows/_check-changes.yaml
+    with:
+      ENV_FILE_PATH: ${{ needs.resolve-deploy.outputs.env_file_path }}
+      SVC_NAME: ${{ inputs.SVC_NAME }}
+      REACT_APP: ${{ inputs.REACT_APP }}
+      COMPARE_MODE: tag
+      PREVIOUS_TAG: ${{ needs.validate-tag.outputs.previous_tag }}
+
+  # ============================================================
+  # RETAG IMAGE
+  # ============================================================
+  retag:
+    needs: [resolve-registry, validate-tag]
+    if: |
+      always() &&
+      needs.validate-tag.outputs.valid == 'true'
+    uses: ./.github/workflows/_retag-image.yaml
+    with:
+      SVC_NAME: ${{ inputs.SVC_NAME }}
+      REGISTRY_TYPE: ${{ needs.resolve-registry.outputs.registry_type }}
+      IMAGE_REGISTRY: ${{ needs.resolve-registry.outputs.image_registry }}
+      REGISTRY_PROJECT: ${{ needs.resolve-registry.outputs.registry_project }}
+      REGISTRY_REPO: ${{ needs.resolve-registry.outputs.registry_repo }}
+      SOURCE_TAG: ${{ github.sha }}
+      TARGET_TAG: ${{ github.ref_name }}
+    secrets:
+      REGISTRY_CREDENTIALS: ${{ secrets.REGISTRY_CREDENTIALS }}
+
+  # ============================================================
+  # DEPLOY
+  # ============================================================
+  deploy:
+    needs: [resolve-deploy, validate-tag, retag, check-changes]
+    if: |
+      always() &&
+      needs.validate-tag.outputs.valid == 'true' &&
+      needs.retag.outputs.tag_exists == 'true' &&
+      needs.resolve-deploy.outputs.cluster_name != ''
+    uses: ./.github/workflows/_deploy.yaml
+    with:
+      SVC_NAME: ${{ inputs.SVC_NAME }}
+      TYPE: ${{ inputs.TYPE }}
+      IMAGE: ${{ needs.retag.outputs.image }}
+      NAMESPACE: ${{ needs.resolve-deploy.outputs.namespace }}
+      ENVIRONMENT: prod
+      CLUSTER_PROJECT: ${{ needs.resolve-deploy.outputs.cluster_project }}
+      CLUSTER_NAME: ${{ needs.resolve-deploy.outputs.cluster_name }}
+      CLUSTER_REGION: ${{ needs.resolve-deploy.outputs.cluster_region }}
+      AZURE_RESOURCE_GROUP: ${{ needs.resolve-deploy.outputs.azure_resource_group }}
+      DEPLOY_METHOD: ${{ inputs.DEPLOY_METHOD }}
+      HELM_VALUES_PATH: ${{ inputs.HELM_VALUES_PATH }}
+      APP_VERSION: ${{ github.ref_name }}
+      CONFIGMAP_ARTIFACT: ${{ needs.check-changes.outputs.configmap_artifact }}
+    secrets:
+      CLUSTER_CREDENTIALS: ${{ secrets.PROD_CLUSTER_CREDENTIALS || secrets.CLUSTER_CREDENTIALS }}
+      PAT: ${{ secrets.PAT }}

@@ -1,0 +1,27 @@
+name: 'Apply ConfigMap'
+description: 'Download and apply ConfigMap from artifact'
+
+inputs:
+  artifact_name:
+    description: 'Name of artifact containing ConfigMap YAML'
+    required: true
+  namespace:
+    description: 'Kubernetes namespace'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Download ConfigMap artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+
+    - name: Apply ConfigMap
+      shell: bash
+      run: |
+        CONFIGMAP_FILE=$(ls *.yaml 2>/dev/null | head -1)
+        if [[ -n "$CONFIGMAP_FILE" ]]; then
+          echo "Applying ConfigMap from $CONFIGMAP_FILE"
+          kubectl apply --force -f "$CONFIGMAP_FILE" -n ${{ inputs.namespace }}
+        fi

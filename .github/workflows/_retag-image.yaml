@@ -1,0 +1,115 @@
+name: "Retag Image"
+
+on:
+  workflow_call:
+    inputs:
+      SVC_NAME:
+        description: 'Service name (image name)'
+        required: true
+        type: string
+      REGISTRY_TYPE:
+        description: 'Registry provider: gar, gcr, ecr, acr, dockerhub, ghcr, custom'
+        required: true
+        type: string
+      IMAGE_REGISTRY:
+        description: 'Registry URL (auto-set for gcr/dockerhub/ghcr, required for others)'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_PROJECT:
+        description: 'Project/account/namespace within registry'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_REPO:
+        description: 'Repository name within project'
+        required: false
+        type: string
+        default: ''
+      SOURCE_TAG:
+        description: 'Source image tag (usually git SHA)'
+        required: true
+        type: string
+      TARGET_TAG:
+        description: 'Target image tag (usually release version)'
+        required: true
+        type: string
+
+    outputs:
+      image:
+        description: 'Full image URL with new tag'
+        value: ${{ jobs.retag.outputs.image }}
+      tag_exists:
+        description: 'Whether the source image tag exists'
+        value: ${{ jobs.retag.outputs.tag_exists }}
+
+    secrets:
+      REGISTRY_CREDENTIALS:
+        description: 'Registry auth credentials (auto-detected: GCP SA JSON, AWS JSON, Azure JSON, or password/token)'
+        required: false
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    name: Retag Image
+    outputs:
+      image: ${{ steps.retag.outputs.image }}
+      tag_exists: ${{ steps.check-tag.outputs.tag_exists }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve image path
+        id: registry
+        uses: ./.github/actions/resolve-image-path
+        with:
+          registry_type: ${{ inputs.REGISTRY_TYPE }}
+          image_registry: ${{ inputs.IMAGE_REGISTRY }}
+          registry_project: ${{ inputs.REGISTRY_PROJECT }}
+          registry_repo: ${{ inputs.REGISTRY_REPO }}
+          svc_name: ${{ inputs.SVC_NAME }}
+
+      - name: Login to registry
+        uses: ./.github/actions/registry-login
+        with:
+          registry_type: ${{ inputs.REGISTRY_TYPE }}
+          image_registry: ${{ steps.registry.outputs.image_registry }}
+          credentials: ${{ secrets.REGISTRY_CREDENTIALS }}
+          github_actor: ${{ github.actor }}
+          github_token: ${{ github.token }}
+
+      - name: Check if source image tag exists
+        id: check-tag
+        run: |
+          SOURCE_IMAGE="${{ steps.registry.outputs.image_base }}:${{ inputs.SOURCE_TAG }}"
+
+          echo "Checking if image exists: $SOURCE_IMAGE"
+
+          if docker manifest inspect "$SOURCE_IMAGE" > /dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Source image found with tag: ${{ inputs.SOURCE_TAG }}"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "ERROR: Source image does not exist with tag: ${{ inputs.SOURCE_TAG }}"
+          fi
+        shell: bash
+
+      - name: Retag and push image
+        id: retag
+        if: steps.check-tag.outputs.tag_exists == 'true'
+        run: |
+          SOURCE_IMAGE="${{ steps.registry.outputs.image_base }}:${{ inputs.SOURCE_TAG }}"
+          TARGET_IMAGE="${{ steps.registry.outputs.image_base }}:${{ inputs.TARGET_TAG }}"
+
+          echo "Pulling: $SOURCE_IMAGE"
+          docker pull "$SOURCE_IMAGE"
+
+          echo "Tagging as: $TARGET_IMAGE"
+          docker tag "$SOURCE_IMAGE" "$TARGET_IMAGE"
+
+          echo "Pushing: $TARGET_IMAGE"
+          docker push "$TARGET_IMAGE"
+
+          echo "image=$TARGET_IMAGE" >> "$GITHUB_OUTPUT"
+        continue-on-error: true

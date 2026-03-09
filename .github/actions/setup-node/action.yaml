@@ -1,0 +1,41 @@
+name: 'Setup Node Build'
+description: 'Setup Node environment, install dependencies, and build'
+
+inputs:
+  node_version:
+    description: 'Node version'
+    required: false
+    default: '18'
+  build_command:
+    description: 'Build command'
+    required: true
+  dependencies_flag:
+    description: 'Extra yarn install flags'
+    required: false
+    default: ''
+  npm_token:
+    description: 'NPM token for private packages'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node_version }}
+
+    - name: Configure npm registry
+      shell: bash
+      run: |
+        echo "@zopsmart:registry=https://npm.pkg.github.com/" >> ~/.npmrc
+        echo "//npm.pkg.github.com/:_authToken=${{ inputs.npm_token }}" >> ~/.npmrc
+
+    - name: Install dependencies
+      shell: bash
+      run: yarn install ${{ inputs.dependencies_flag }}
+
+    - name: Build
+      shell: bash
+      run: ${{ inputs.build_command }}

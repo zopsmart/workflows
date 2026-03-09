@@ -1,0 +1,50 @@
+# Azure Container Registry (ACR) + Azure Kubernetes Service (AKS)
+#
+# BUILD_COMMAND examples:
+#   Go:   'go build -o main ./cmd/...'
+#   Node: 'yarn build'
+#
+# For React/frontend apps, add: REACT_APP: true
+#
+# Required repository variables (vars.*):
+#   APP_NAME: "my-service"
+#
+# Required repository secrets (secrets.*):
+#   REGISTRY_CREDENTIALS: Azure Service Principal JSON
+#     Format: {"clientId": "...", "clientSecret": "...", "tenantId": "..."}
+#   CLUSTER_CREDENTIALS: Azure Service Principal JSON (can be same as REGISTRY_CREDENTIALS)
+#     Format: {"clientId": "...", "clientSecret": "...", "tenantId": "..."}
+#   PAT: GitHub PAT (optional, for private dependencies)
+#   NPM_TOKEN: NPM token (optional, for Node private packages)
+
+name: Deploy
+
+on:
+  push:
+    branches: [development]
+  release:
+    types: [published]
+
+jobs:
+  stage:
+    if: github.ref == 'refs/heads/development'
+    uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      BUILD_COMMAND: 'go build -o main ./cmd/...'  # or 'yarn build'
+      IMAGE_REGISTRY: myregistry.azurecr.io
+      CLUSTER_NAME: my-aks-cluster
+      AZURE_RESOURCE_GROUP: my-resource-group
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit
+
+  prod:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: zopsmart/workflows/.github/workflows/prod-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      IMAGE_REGISTRY: myregistry.azurecr.io
+      CLUSTER_NAME: my-aks-cluster
+      AZURE_RESOURCE_GROUP: my-resource-group
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit

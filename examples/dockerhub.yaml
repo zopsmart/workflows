@@ -1,0 +1,47 @@
+# Docker Hub + Kubeconfig
+#
+# BUILD_COMMAND examples:
+#   Go:   'go build -o main ./cmd/...'
+#   Node: 'yarn build'
+#
+# For React/frontend apps, add: REACT_APP: true
+#
+# Required repository variables (vars.*):
+#   APP_NAME: "my-service"
+#
+# Required repository secrets (secrets.*):
+#   REGISTRY_CREDENTIALS: Docker Hub access token (username:token format or just token)
+#   CLUSTER_CREDENTIALS: Base64-encoded kubeconfig file
+#     Generate with: cat ~/.kube/config | base64 -w 0
+#   PAT: GitHub PAT (optional, for private dependencies)
+#   NPM_TOKEN: NPM token (optional, for Node private packages)
+
+name: Deploy
+
+on:
+  push:
+    branches: [development]
+  release:
+    types: [published]
+
+jobs:
+  stage:
+    if: github.ref == 'refs/heads/development'
+    uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      BUILD_COMMAND: 'go build -o main ./cmd/...'  # or 'yarn build'
+      REGISTRY_TYPE: dockerhub
+      REGISTRY_PROJECT: myusername  # Docker Hub username/org
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit
+
+  prod:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: zopsmart/workflows/.github/workflows/prod-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      REGISTRY_TYPE: dockerhub
+      REGISTRY_PROJECT: myusername
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit

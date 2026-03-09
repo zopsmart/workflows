@@ -1,0 +1,160 @@
+name: "Resolve Deploy Config"
+
+on:
+  workflow_call:
+    inputs:
+      ENVIRONMENT:
+        description: 'Environment: stage or prod'
+        required: true
+        type: string
+      CLUSTER_PROJECT:
+        description: 'Cluster project override'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_NAME:
+        description: 'Cluster name override'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_REGION:
+        description: 'Cluster region override'
+        required: false
+        type: string
+        default: ''
+      AZURE_RESOURCE_GROUP:
+        description: 'Azure resource group override'
+        required: false
+        type: string
+        default: ''
+      NAMESPACE:
+        description: 'Namespace override'
+        required: false
+        type: string
+        default: ''
+      ENV_FILE_PATH:
+        description: 'Env file path override. Use "__default__" for environment-specific default'
+        required: false
+        type: string
+        default: '__default__'
+
+    outputs:
+      cluster_project:
+        description: 'Resolved cluster project'
+        value: ${{ jobs.resolve.outputs.cluster_project }}
+      cluster_name:
+        description: 'Resolved cluster name'
+        value: ${{ jobs.resolve.outputs.cluster_name }}
+      cluster_region:
+        description: 'Resolved cluster region'
+        value: ${{ jobs.resolve.outputs.cluster_region }}
+      azure_resource_group:
+        description: 'Resolved Azure resource group'
+        value: ${{ jobs.resolve.outputs.azure_resource_group }}
+      namespace:
+        description: 'Resolved namespace'
+        value: ${{ jobs.resolve.outputs.namespace }}
+      env_file_path:
+        description: 'Resolved env file path'
+        value: ${{ jobs.resolve.outputs.env_file_path }}
+      env_file_explicit:
+        description: 'Whether env file path was explicitly set'
+        value: ${{ jobs.resolve.outputs.env_file_explicit }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    name: Resolve Deploy Config
+    outputs:
+      cluster_project: ${{ steps.resolve.outputs.cluster_project }}
+      cluster_name: ${{ steps.resolve.outputs.cluster_name }}
+      cluster_region: ${{ steps.resolve.outputs.cluster_region }}
+      azure_resource_group: ${{ steps.resolve.outputs.azure_resource_group }}
+      namespace: ${{ steps.resolve.outputs.namespace }}
+      env_file_path: ${{ steps.resolve.outputs.env_file_path }}
+      env_file_explicit: ${{ steps.resolve.outputs.env_file_explicit }}
+
+    steps:
+      - name: Resolve configuration
+        id: resolve
+        run: |
+          ENVIRONMENT="${{ inputs.ENVIRONMENT }}"
+
+          # ---------------------------------------------------------------
+          # CLUSTER CONFIG (same for all environments)
+          # ---------------------------------------------------------------
+
+          # CLUSTER_PROJECT: input -> vars.CLUSTER_PROJECT
+          if [[ -n "${{ inputs.CLUSTER_PROJECT }}" ]]; then
+            echo "cluster_project=${{ inputs.CLUSTER_PROJECT }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "cluster_project=${{ vars.CLUSTER_PROJECT }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          # CLUSTER_NAME: input -> vars.CLUSTER_NAME
+          if [[ -n "${{ inputs.CLUSTER_NAME }}" ]]; then
+            echo "cluster_name=${{ inputs.CLUSTER_NAME }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "cluster_name=${{ vars.CLUSTER_NAME }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          # CLUSTER_REGION: input -> vars.CLUSTER_REGION -> vars.AWS_REGION -> default
+          if [[ -n "${{ inputs.CLUSTER_REGION }}" ]]; then
+            echo "cluster_region=${{ inputs.CLUSTER_REGION }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.CLUSTER_REGION }}" ]]; then
+            echo "cluster_region=${{ vars.CLUSTER_REGION }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.AWS_REGION }}" ]]; then
+            echo "cluster_region=${{ vars.AWS_REGION }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "cluster_region=us-central1" >> "$GITHUB_OUTPUT"
+          fi
+
+          # AZURE_RESOURCE_GROUP: input -> vars.AZURE_RESOURCE_GROUP
+          if [[ -n "${{ inputs.AZURE_RESOURCE_GROUP }}" ]]; then
+            echo "azure_resource_group=${{ inputs.AZURE_RESOURCE_GROUP }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "azure_resource_group=${{ vars.AZURE_RESOURCE_GROUP }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ---------------------------------------------------------------
+          # NAMESPACE (environment-specific)
+          # ---------------------------------------------------------------
+          if [[ -n "${{ inputs.NAMESPACE }}" ]]; then
+            echo "namespace=${{ inputs.NAMESPACE }}" >> "$GITHUB_OUTPUT"
+          elif [[ "$ENVIRONMENT" == "stage" ]]; then
+            if [[ -n "${{ vars.STAGE_NAMESPACE }}" ]]; then
+              echo "namespace=${{ vars.STAGE_NAMESPACE }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "namespace=${{ vars.APP_NAME }}-stage" >> "$GITHUB_OUTPUT"
+            fi
+          elif [[ "$ENVIRONMENT" == "prod" ]]; then
+            if [[ -n "${{ vars.PROD_NAMESPACE }}" ]]; then
+              echo "namespace=${{ vars.PROD_NAMESPACE }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "namespace=${{ vars.APP_NAME }}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "namespace=${{ vars.APP_NAME }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ---------------------------------------------------------------
+          # ENV_FILE_PATH (environment-specific default)
+          # ---------------------------------------------------------------
+          INPUT_ENV_PATH="${{ inputs.ENV_FILE_PATH }}"
+          if [[ "$INPUT_ENV_PATH" == "__default__" ]]; then
+            if [[ "$ENVIRONMENT" == "stage" ]]; then
+              echo "env_file_path=./configs/.stage.env" >> "$GITHUB_OUTPUT"
+            elif [[ "$ENVIRONMENT" == "prod" ]]; then
+              echo "env_file_path=./configs/.prod.env" >> "$GITHUB_OUTPUT"
+            else
+              echo "env_file_path=" >> "$GITHUB_OUTPUT"
+            fi
+            echo "env_file_explicit=false" >> "$GITHUB_OUTPUT"
+          elif [[ -z "$INPUT_ENV_PATH" ]]; then
+            echo "env_file_path=" >> "$GITHUB_OUTPUT"
+            echo "env_file_explicit=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "env_file_path=$INPUT_ENV_PATH" >> "$GITHUB_OUTPUT"
+            echo "env_file_explicit=true" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash

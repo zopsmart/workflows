@@ -1,0 +1,273 @@
+name: 'Registry Login'
+description: 'Authenticate to container registries (GAR, GCR, ECR, ACR, DockerHub, GHCR, custom)'
+
+inputs:
+  registry_type:
+    description: 'Registry provider: gar, gcr, ecr, acr, dockerhub, ghcr, custom'
+    required: true
+  image_registry:
+    description: 'Registry URL. Required for gar/ecr/acr/custom. Auto-defaults for gcr (gcr.io), dockerhub (docker.io), ghcr (ghcr.io)'
+    required: false
+    default: ''
+  credentials:
+    description: 'Registry auth. Format: GCP SA JSON (gar/gcr), AWS JSON (ecr), Azure JSON (acr), password/token (dockerhub/ghcr/custom)'
+    required: false
+    default: ''
+  username:
+    description: 'Username override. Required for dockerhub/ghcr/custom (defaults to github_actor)'
+    required: false
+    default: ''
+  # ECR-specific
+  aws_access_key_id:
+    description: 'AWS access key ID. Required for ECR (via input or credentials JSON)'
+    required: false
+    default: ''
+  aws_region:
+    description: 'AWS region for ECR. Auto-extracted from image_registry URL if not provided'
+    required: false
+    default: ''
+  # ACR-specific
+  azure_client_id:
+    description: 'Azure client ID. Required for ACR (via input or credentials JSON)'
+    required: false
+    default: ''
+  azure_tenant_id:
+    description: 'Azure tenant ID. Required for ACR (via input or credentials JSON)'
+    required: false
+    default: ''
+  # GitHub context (passed from calling workflow)
+  github_actor:
+    description: 'GitHub actor. Used as fallback username for dockerhub/ghcr/custom'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token. Fallback for credentials in GHCR'
+    required: false
+    default: ''
+
+outputs:
+  registry:
+    description: 'Resolved registry URL'
+    value: ${{ steps.registry.outputs.image_registry }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ============================================================
+    # RESOLVE REGISTRY DEFAULTS
+    # ============================================================
+    - name: Resolve registry defaults
+      id: registry
+      shell: bash
+      run: |
+        REGISTRY_TYPE="${{ inputs.registry_type }}"
+        IMAGE_REGISTRY="${{ inputs.image_registry }}"
+
+        # Set default IMAGE_REGISTRY based on registry type
+        if [[ -z "$IMAGE_REGISTRY" ]]; then
+          case "$REGISTRY_TYPE" in
+            gcr) IMAGE_REGISTRY="gcr.io" ;;
+            ghcr) IMAGE_REGISTRY="ghcr.io" ;;
+            dockerhub) IMAGE_REGISTRY="docker.io" ;;
+          esac
+        fi
+
+        echo "image_registry=$IMAGE_REGISTRY" >> "$GITHUB_OUTPUT"
+
+    # ============================================================
+    # PARSE CREDENTIALS
+    # Extract values from JSON or use plain credential
+    # ============================================================
+    - name: Parse credentials
+      id: creds
+      shell: bash
+      run: |
+        CREDS='${{ inputs.credentials }}'
+        REGISTRY_TYPE="${{ inputs.registry_type }}"
+        errors=""
+
+        # ---------------------------------------------------------
+        # GAR / GCR (Google Cloud)
+        # Required: GCP Service Account JSON
+        # ---------------------------------------------------------
+        if [[ "$REGISTRY_TYPE" == "gar" || "$REGISTRY_TYPE" == "gcr" ]]; then
+          if ! echo "$CREDS" | jq -e '.type == "service_account"' > /dev/null 2>&1; then
+            errors+="GAR/GCR requires a GCP Service Account JSON credential\n"
+          fi
+
+          if [[ "$REGISTRY_TYPE" == "gar" && -z "${{ inputs.image_registry }}" ]]; then
+            errors+="GAR requires image_registry (e.g., us-docker.pkg.dev)\n"
+          fi
+
+          # Output: Use raw JSON as credential
+          echo "gcp_credentials<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CREDS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+        # ---------------------------------------------------------
+        # ECR (AWS)
+        # Required: aws_secret_access_key, aws_access_key_id
+        # ---------------------------------------------------------
+        elif [[ "$REGISTRY_TYPE" == "ecr" ]]; then
+          # Secret: JSON -> plain credential
+          SECRET=""
+          if echo "$CREDS" | jq -e '.aws_secret_access_key' > /dev/null 2>&1; then
+            SECRET=$(echo "$CREDS" | jq -r '.aws_secret_access_key')
+          elif [[ -n "$CREDS" && ! "$CREDS" =~ ^\{.*\}$ ]]; then
+            SECRET="$CREDS"
+          fi
+          [[ -z "$SECRET" ]] && errors+="aws_secret_access_key is required\n"
+
+          # Access Key ID: input -> JSON
+          KEY_ID="${{ inputs.aws_access_key_id }}"
+          if [[ -z "$KEY_ID" ]] && echo "$CREDS" | jq -e '.aws_access_key_id' > /dev/null 2>&1; then
+            KEY_ID=$(echo "$CREDS" | jq -r '.aws_access_key_id')
+          fi
+          [[ -z "$KEY_ID" ]] && errors+="aws_access_key_id is required (as input or in JSON)\n"
+
+          # Region: extract from IMAGE_REGISTRY URL -> input -> JSON -> default
+          REGION=""
+          IMAGE_REG="${{ inputs.image_registry }}"
+          if [[ "$IMAGE_REG" =~ \.ecr\.([a-z0-9-]+)\.amazonaws\.com ]]; then
+            REGION="${BASH_REMATCH[1]}"
+          fi
+          [[ -z "$REGION" ]] && REGION="${{ inputs.aws_region }}"
+          if [[ -z "$REGION" ]] && echo "$CREDS" | jq -e '.aws_region' > /dev/null 2>&1; then
+            REGION=$(echo "$CREDS" | jq -r '.aws_region')
+          fi
+          [[ -z "$REGION" ]] && REGION="us-east-1"
+
+          echo "::add-mask::$SECRET"
+          echo "aws_secret_access_key=$SECRET" >> "$GITHUB_OUTPUT"
+          echo "aws_access_key_id=$KEY_ID" >> "$GITHUB_OUTPUT"
+          echo "aws_region=$REGION" >> "$GITHUB_OUTPUT"
+
+        # ---------------------------------------------------------
+        # ACR (Azure)
+        # Required: clientSecret, clientId, tenantId
+        # ---------------------------------------------------------
+        elif [[ "$REGISTRY_TYPE" == "acr" ]]; then
+          # Secret: JSON -> plain credential
+          SECRET=""
+          if echo "$CREDS" | jq -e '.clientSecret' > /dev/null 2>&1; then
+            SECRET=$(echo "$CREDS" | jq -r '.clientSecret')
+          elif [[ -n "$CREDS" && ! "$CREDS" =~ ^\{.*\}$ ]]; then
+            SECRET="$CREDS"
+          fi
+          [[ -z "$SECRET" ]] && errors+="clientSecret is required\n"
+
+          # Client ID: input -> JSON
+          CLIENT_ID="${{ inputs.azure_client_id }}"
+          if [[ -z "$CLIENT_ID" ]] && echo "$CREDS" | jq -e '.clientId' > /dev/null 2>&1; then
+            CLIENT_ID=$(echo "$CREDS" | jq -r '.clientId')
+          fi
+          [[ -z "$CLIENT_ID" ]] && errors+="clientId is required (as input or in JSON)\n"
+
+          # Tenant ID: input -> JSON
+          TENANT_ID="${{ inputs.azure_tenant_id }}"
+          if [[ -z "$TENANT_ID" ]] && echo "$CREDS" | jq -e '.tenantId' > /dev/null 2>&1; then
+            TENANT_ID=$(echo "$CREDS" | jq -r '.tenantId')
+          fi
+          [[ -z "$TENANT_ID" ]] && errors+="tenantId is required (as input or in JSON)\n"
+
+          echo "::add-mask::$SECRET"
+          echo "azure_client_secret=$SECRET" >> "$GITHUB_OUTPUT"
+          echo "azure_client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+          echo "azure_tenant_id=$TENANT_ID" >> "$GITHUB_OUTPUT"
+
+        # ---------------------------------------------------------
+        # Docker Hub / GHCR / Custom
+        # Required: username, password
+        # ---------------------------------------------------------
+        elif [[ "$REGISTRY_TYPE" == "dockerhub" || "$REGISTRY_TYPE" == "ghcr" || "$REGISTRY_TYPE" == "custom" ]]; then
+          # Username: input -> github_actor
+          USERNAME="${{ inputs.username }}"
+          [[ -z "$USERNAME" ]] && USERNAME="${{ inputs.github_actor }}"
+          [[ -z "$USERNAME" ]] && errors+="username is required (username input or github_actor)\n"
+
+          # Password: credentials -> github_token (GHCR only)
+          PASSWORD="$CREDS"
+          if [[ -z "$PASSWORD" && "$REGISTRY_TYPE" == "ghcr" ]]; then
+            PASSWORD="${{ inputs.github_token }}"
+          fi
+          [[ -z "$PASSWORD" ]] && errors+="password/token is required (credentials)\n"
+
+          # Custom requires registry URL
+          if [[ "$REGISTRY_TYPE" == "custom" && -z "${{ inputs.image_registry }}" ]]; then
+            errors+="image_registry is required for custom registry\n"
+          fi
+
+          echo "::add-mask::$PASSWORD"
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Output errors
+        if [[ -n "$errors" ]]; then
+          echo "::error::Registry credential validation failed:"
+          echo -e "$errors"
+          exit 1
+        fi
+
+    # ============================================================
+    # LOGIN TO REGISTRY
+    # ============================================================
+
+    # -- GAR/GCR Login --
+    - name: Login to GAR/GCR
+      if: inputs.registry_type == 'gar' || inputs.registry_type == 'gcr'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.registry.outputs.image_registry }}
+        username: _json_key
+        password: ${{ steps.creds.outputs.gcp_credentials }}
+
+    # -- ECR Login --
+    - name: Configure AWS credentials
+      if: inputs.registry_type == 'ecr'
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ steps.creds.outputs.aws_access_key_id }}
+        aws-secret-access-key: ${{ steps.creds.outputs.aws_secret_access_key }}
+        aws-region: ${{ steps.creds.outputs.aws_region }}
+
+    - name: Login to ECR
+      if: inputs.registry_type == 'ecr'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.registry.outputs.image_registry }}
+
+    # -- ACR Login --
+    - name: Login to ACR
+      if: inputs.registry_type == 'acr'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.registry.outputs.image_registry }}
+        username: ${{ steps.creds.outputs.azure_client_id }}
+        password: ${{ steps.creds.outputs.azure_client_secret }}
+
+    # -- Docker Hub Login --
+    - name: Login to Docker Hub
+      if: inputs.registry_type == 'dockerhub'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ steps.creds.outputs.username }}
+        password: ${{ steps.creds.outputs.password }}
+
+    # -- GHCR Login --
+    - name: Login to GHCR
+      if: inputs.registry_type == 'ghcr'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ steps.creds.outputs.username }}
+        password: ${{ steps.creds.outputs.password }}
+
+    # -- Custom Registry Login --
+    - name: Login to custom registry
+      if: inputs.registry_type == 'custom'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.registry.outputs.image_registry }}
+        username: ${{ steps.creds.outputs.username }}
+        password: ${{ steps.creds.outputs.password }}

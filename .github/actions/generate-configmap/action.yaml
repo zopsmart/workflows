@@ -1,0 +1,72 @@
+name: 'Generate ConfigMap'
+description: 'Generate ConfigMap YAML from env file'
+
+inputs:
+  svc_name:
+    description: 'Service/ConfigMap name'
+    required: true
+  env_file_path:
+    description: 'Path to env file'
+    required: true
+  react_app:
+    description: 'Enable React-specific format'
+    required: false
+    default: 'false'
+
+outputs:
+  configmap_file:
+    description: 'Path to generated ConfigMap YAML'
+    value: ${{ steps.generate.outputs.configmap_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate ConfigMap YAML
+      id: generate
+      shell: bash
+      run: |
+        CONFIG_MAP_NAME="${{ inputs.svc_name }}"
+        ENV_FILE_PATH="${{ inputs.env_file_path }}"
+        REACT_APP="${{ inputs.react_app }}"
+
+        # Create an associative array to store key-value pairs
+        declare -A envArray
+
+        # Read each line in .env and extract key-value pairs
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          # Skip empty lines and comments
+          if [[ -z "$line" || "${line:0:1}" == "#" ]]; then
+            continue
+          fi
+          key=$(echo "$line" | cut -d '=' -f 1)
+          value=$(echo "$line" | cut -d '=' -f 2-)
+          envArray["$key"]=$value
+        done < "$ENV_FILE_PATH"
+
+        # Create ConfigMap YAML header
+        echo "apiVersion: v1" > "${CONFIG_MAP_NAME}.yaml"
+        echo "kind: ConfigMap" >> "${CONFIG_MAP_NAME}.yaml"
+        echo "metadata:" >> "${CONFIG_MAP_NAME}.yaml"
+        echo "  name: ${CONFIG_MAP_NAME}" >> "${CONFIG_MAP_NAME}.yaml"
+        echo "data:" >> "${CONFIG_MAP_NAME}.yaml"
+
+        if [[ "$REACT_APP" == "true" ]]; then
+          # React app format: environment.js with window.env object
+          echo "  environment.js: |" >> "${CONFIG_MAP_NAME}.yaml"
+          echo "    if (typeof window !== 'undefined')" >> "${CONFIG_MAP_NAME}.yaml"
+          echo "    window.env = {" >> "${CONFIG_MAP_NAME}.yaml"
+          for key in "${!envArray[@]}"; do
+            echo "      $key: \"${envArray[$key]}\"," >> "${CONFIG_MAP_NAME}.yaml"
+          done
+          echo "    }" >> "${CONFIG_MAP_NAME}.yaml"
+        else
+          # Standard configmap format
+          for key in "${!envArray[@]}"; do
+            echo "  $key: ${envArray[$key]}" >> "${CONFIG_MAP_NAME}.yaml"
+          done
+        fi
+
+        echo "Generated ConfigMap:"
+        cat "${CONFIG_MAP_NAME}.yaml"
+
+        echo "configmap_file=${CONFIG_MAP_NAME}.yaml" >> "$GITHUB_OUTPUT"

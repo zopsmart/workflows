@@ -1,0 +1,137 @@
+name: "Check Changes"
+
+on:
+  workflow_call:
+    inputs:
+      ENV_FILE_PATH:
+        description: 'Path to env file for configmap detection. Empty string skips configmap detection.'
+        required: false
+        type: string
+        default: ''
+      SVC_NAME:
+        description: 'Service name (for configmap generation)'
+        required: false
+        type: string
+        default: ''
+      REACT_APP:
+        description: 'Enable React-specific configmap format'
+        required: false
+        type: boolean
+        default: false
+      COMPARE_MODE:
+        description: 'commit (default) or tag'
+        required: false
+        type: string
+        default: 'commit'
+      PREVIOUS_TAG:
+        description: 'Previous tag to compare against (required if COMPARE_MODE=tag)'
+        required: false
+        type: string
+        default: ''
+
+    outputs:
+      deployment:
+        description: 'True if non-env files changed (code changes)'
+        value: ${{ jobs.check.outputs.deployment }}
+      configmap:
+        description: 'True if env file changed'
+        value: ${{ jobs.check.outputs.configmap }}
+      configmap_artifact:
+        description: 'Artifact name if configmap was generated'
+        value: ${{ jobs.check.outputs.configmap_artifact }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: Check Changes
+    outputs:
+      deployment: ${{ steps.check.outputs.deployment }}
+      configmap: ${{ steps.check.outputs.configmap }}
+      configmap_artifact: ${{ steps.artifact-name.outputs.artifact_name }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Find Modified Files (commit mode)
+        if: inputs.COMPARE_MODE == 'commit'
+        id: files-commit
+        uses: masesgroup/retrieve-changed-files@v2
+
+      - name: Find Modified Files (tag mode)
+        if: inputs.COMPARE_MODE == 'tag' && inputs.PREVIOUS_TAG != ''
+        id: files-tag
+        shell: bash
+        run: |
+          CHANGED=$(git diff --name-only ${{ inputs.PREVIOUS_TAG }} HEAD | tr '\n' ' ')
+          echo "all=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Check modified files
+        id: check
+        run: |
+          ENV_FILE_PATH="${{ inputs.ENV_FILE_PATH }}"
+
+          # Use appropriate files output based on mode
+          if [[ "${{ inputs.COMPARE_MODE }}" == "tag" ]]; then
+            FILES="${{ steps.files-tag.outputs.all }}"
+          else
+            FILES="${{ steps.files-commit.outputs.all }}"
+          fi
+
+          # Initialize outputs
+          deployment=false
+          configmap=false
+
+          # Normalize env file path (remove leading ./ or /)
+          env_file_normalized=""
+          if [[ -n "$ENV_FILE_PATH" ]]; then
+            env_file_normalized="${ENV_FILE_PATH#./}"
+            env_file_normalized="${env_file_normalized#/}"
+          fi
+
+          # Check each modified file
+          for file in $FILES; do
+            # Normalize the file path for comparison
+            file_normalized="${file#./}"
+            file_normalized="${file_normalized#/}"
+
+            if [[ -n "$env_file_normalized" && "$file_normalized" == "$env_file_normalized" ]]; then
+              # This file is the env file
+              configmap=true
+            else
+              # This file is not the env file (code change)
+              deployment=true
+            fi
+          done
+
+          echo "deployment=$deployment"
+          echo "configmap=$configmap"
+
+          echo "deployment=$deployment" >> "$GITHUB_OUTPUT"
+          echo "configmap=$configmap" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Generate ConfigMap
+        id: generate
+        if: steps.check.outputs.configmap == 'true' && inputs.SVC_NAME != ''
+        uses: ./.github/actions/generate-configmap
+        with:
+          svc_name: ${{ inputs.SVC_NAME }}
+          env_file_path: ${{ inputs.ENV_FILE_PATH }}
+          react_app: ${{ inputs.REACT_APP }}
+
+      - name: Upload ConfigMap artifact
+        if: steps.check.outputs.configmap == 'true' && inputs.SVC_NAME != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: configmap-${{ inputs.SVC_NAME }}
+          path: ${{ inputs.SVC_NAME }}.yaml
+          retention-days: 1
+
+      - name: Set artifact output
+        id: artifact-name
+        if: steps.check.outputs.configmap == 'true' && inputs.SVC_NAME != ''
+        run: echo "artifact_name=configmap-${{ inputs.SVC_NAME }}" >> "$GITHUB_OUTPUT"
+        shell: bash

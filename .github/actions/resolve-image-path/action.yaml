@@ -1,0 +1,81 @@
+name: 'Resolve Image Path'
+description: 'Resolve container image registry URL and build full image path'
+
+inputs:
+  registry_type:
+    description: 'Registry provider: gar, gcr, ecr, acr, dockerhub, ghcr, custom'
+    required: true
+  image_registry:
+    description: 'Registry URL. Required for gar/ecr/acr/custom. Auto-defaults for gcr (gcr.io), dockerhub (docker.io), ghcr (ghcr.io)'
+    required: false
+    default: ''
+  registry_project:
+    description: 'Project/account/namespace within registry. Used to construct image path: REGISTRY/PROJECT/REPO/SVC'
+    required: false
+    default: ''
+  registry_repo:
+    description: 'Repository name within project. Used to construct image path: REGISTRY/PROJECT/REPO/SVC'
+    required: false
+    default: ''
+  svc_name:
+    description: 'Service name'
+    required: true
+  image_tag:
+    description: 'Image tag (optional, omit for base path only)'
+    required: false
+    default: ''
+
+outputs:
+  image_registry:
+    description: 'Resolved registry URL'
+    value: ${{ steps.resolve.outputs.image_registry }}
+  image_base:
+    description: 'Image path without tag (REGISTRY/PROJECT/REPO/SVC or REGISTRY/PROJECT/SVC or REGISTRY/SVC)'
+    value: ${{ steps.resolve.outputs.image_base }}
+  image:
+    description: 'Full image path with tag (empty if no tag provided)'
+    value: ${{ steps.resolve.outputs.image }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve image path
+      id: resolve
+      shell: bash
+      run: |
+        REGISTRY_TYPE="${{ inputs.registry_type }}"
+        IMAGE_REGISTRY="${{ inputs.image_registry }}"
+
+        # Set default IMAGE_REGISTRY based on registry type
+        if [[ -z "$IMAGE_REGISTRY" ]]; then
+          case "$REGISTRY_TYPE" in
+            gcr) IMAGE_REGISTRY="gcr.io" ;;
+            ghcr) IMAGE_REGISTRY="ghcr.io" ;;
+            dockerhub) IMAGE_REGISTRY="docker.io" ;;
+          esac
+        fi
+
+        echo "image_registry=$IMAGE_REGISTRY" >> "$GITHUB_OUTPUT"
+
+        # Build base image path: REGISTRY/PROJECT/REPO/SVC or REGISTRY/PROJECT/SVC or REGISTRY/SVC
+        REGISTRY_PROJECT="${{ inputs.registry_project }}"
+        REGISTRY_REPO="${{ inputs.registry_repo }}"
+        SVC_NAME="${{ inputs.svc_name }}"
+
+        if [[ -n "$REGISTRY_PROJECT" && -n "$REGISTRY_REPO" ]]; then
+          IMAGE_BASE="${IMAGE_REGISTRY}/${REGISTRY_PROJECT}/${REGISTRY_REPO}/${SVC_NAME}"
+        elif [[ -n "$REGISTRY_PROJECT" ]]; then
+          IMAGE_BASE="${IMAGE_REGISTRY}/${REGISTRY_PROJECT}/${SVC_NAME}"
+        else
+          IMAGE_BASE="${IMAGE_REGISTRY}/${SVC_NAME}"
+        fi
+
+        echo "image_base=$IMAGE_BASE" >> "$GITHUB_OUTPUT"
+
+        # Build full image path with tag (if provided)
+        IMAGE_TAG="${{ inputs.image_tag }}"
+        if [[ -n "$IMAGE_TAG" ]]; then
+          echo "image=${IMAGE_BASE}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+        else
+          echo "image=" >> "$GITHUB_OUTPUT"
+        fi

@@ -1,0 +1,48 @@
+# Google Artifact Registry (GAR) + Google Kubernetes Engine (GKE)
+#
+# BUILD_COMMAND examples:
+#   Go:   'go build -o main ./cmd/...'
+#   Node: 'yarn build'
+#
+# For React/frontend apps, add: REACT_APP: true
+#
+# Required repository variables (vars.*):
+#   IMAGE_REGISTRY: "us-docker.pkg.dev"
+#   REGISTRY_PROJECT: "my-gcp-project"
+#   REGISTRY_REPO: "docker-registry"
+#   CLUSTER_PROJECT: "my-gcp-project"
+#   CLUSTER_NAME: "my-cluster"
+#   CLUSTER_REGION: "us-central1"
+#   APP_NAME: "my-service"
+#
+# Required repository secrets (secrets.*):
+#   REGISTRY_CREDENTIALS: GCP Service Account JSON
+#   CLUSTER_CREDENTIALS: GCP Service Account JSON
+#   PAT: GitHub PAT (optional, for private dependencies)
+#   NPM_TOKEN: NPM token (optional, for Node private packages)
+
+name: Deploy
+
+on:
+  push:
+    branches: [development]
+  release:
+    types: [published]
+
+jobs:
+  stage:
+    if: github.ref == 'refs/heads/development'
+    uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      BUILD_COMMAND: 'go build -o main ./cmd/...'  # or 'yarn build'
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit
+
+  prod:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: zopsmart/workflows/.github/workflows/prod-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit

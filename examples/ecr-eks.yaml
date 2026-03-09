@@ -1,0 +1,50 @@
+# Amazon ECR + Amazon EKS
+#
+# BUILD_COMMAND examples:
+#   Go:   'go build -o main ./cmd/...'
+#   Node: 'yarn build'
+#
+# For React/frontend apps, add: REACT_APP: true
+#
+# Required repository variables (vars.*):
+#   APP_NAME: "my-service"
+#
+# Required repository secrets (secrets.*):
+#   REGISTRY_CREDENTIALS: AWS credentials JSON
+#     Format: {"aws_access_key_id": "AKIA...", "aws_secret_access_key": "..."}
+#   CLUSTER_CREDENTIALS: AWS credentials JSON (can be same as REGISTRY_CREDENTIALS)
+#     Format: {"aws_access_key_id": "AKIA...", "aws_secret_access_key": "...", "aws_region": "us-east-1"}
+#   PAT: GitHub PAT (optional, for private dependencies)
+#   NPM_TOKEN: NPM token (optional, for Node private packages)
+
+name: Deploy
+
+on:
+  push:
+    branches: [development]
+  release:
+    types: [published]
+
+jobs:
+  stage:
+    if: github.ref == 'refs/heads/development'
+    uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      BUILD_COMMAND: 'go build -o main ./cmd/...'  # or 'yarn build'
+      IMAGE_REGISTRY: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+      CLUSTER_NAME: my-eks-cluster
+      CLUSTER_REGION: us-east-1
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit
+
+  prod:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: zopsmart/workflows/.github/workflows/prod-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      IMAGE_REGISTRY: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+      CLUSTER_NAME: my-eks-cluster
+      CLUSTER_REGION: us-east-1
+      # REACT_APP: true  # Uncomment for React/frontend apps
+    secrets: inherit

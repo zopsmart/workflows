@@ -1,0 +1,195 @@
+name: "Build"
+
+on:
+  workflow_call:
+    inputs:
+      LANGUAGE:
+        description: 'Build language: go, node, or generic'
+        required: true
+        type: string
+      SVC_NAME:
+        description: 'Service name'
+        required: true
+        type: string
+      BUILD_COMMAND:
+        description: 'Build command'
+        required: true
+        type: string
+      RUNTIME_VERSION:
+        description: 'Language runtime version (Go version or Node version)'
+        required: false
+        type: string
+        default: ''
+      DOCKER_FILE_PATH:
+        description: 'Path to Dockerfile directory'
+        required: false
+        type: string
+        default: '.'
+      BUILD_ARGUMENTS:
+        description: 'Docker build arguments'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_TYPE:
+        description: 'Registry provider: gar, gcr, ecr, acr, dockerhub, ghcr, custom'
+        required: true
+        type: string
+      IMAGE_REGISTRY:
+        description: 'Registry URL (auto-set for gcr/dockerhub/ghcr, required for others)'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_PROJECT:
+        description: 'Project/account/namespace within registry'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_REPO:
+        description: 'Repository name within project'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_USERNAME:
+        description: 'Username for Docker Hub/GHCR/custom registry (defaults to github.actor)'
+        required: false
+        type: string
+        default: ''
+      # ECR-specific
+      AWS_ACCESS_KEY_ID:
+        description: 'AWS access key ID (for ECR, fallback if not in JSON credentials)'
+        required: false
+        type: string
+        default: ''
+      AWS_REGION:
+        description: 'AWS region (for ECR)'
+        required: false
+        type: string
+        default: 'us-east-1'
+      # ACR-specific
+      AZURE_CLIENT_ID:
+        description: 'Azure client ID (for ACR, fallback if not in JSON credentials)'
+        required: false
+        type: string
+        default: ''
+      AZURE_TENANT_ID:
+        description: 'Azure tenant ID (for ACR, fallback if not in JSON credentials)'
+        required: false
+        type: string
+        default: ''
+      IMAGE_TAG:
+        description: 'Image tag (usually git SHA)'
+        required: true
+        type: string
+      # Go-specific
+      ARTIFACT_PATH:
+        description: '[Go] Path to built artifact (relative to DOCKER_FILE_PATH)'
+        required: false
+        type: string
+        default: 'main'
+      EXTRA_DEPENDENCIES:
+        description: '[Go] Enable extra dependencies step'
+        required: false
+        type: boolean
+        default: false
+      DEPENDENCIES_COMMAND:
+        description: '[Go] Commands to install extra dependencies'
+        required: false
+        type: string
+        default: ''
+      # Node-specific
+      DEPENDENCIES_FLAG:
+        description: '[Node] Additional flags for yarn install'
+        required: false
+        type: string
+        default: ''
+
+    outputs:
+      image:
+        description: 'Full image URL with tag'
+        value: ${{ jobs.build.outputs.image }}
+
+    secrets:
+      PAT:
+        description: 'GitHub PAT for private dependencies'
+        required: false
+      NPM_TOKEN:
+        description: '[Node] NPM token for private packages'
+        required: false
+      REGISTRY_CREDENTIALS:
+        description: 'Registry auth credentials (auto-detected: GCP SA JSON, AWS JSON, Azure JSON, or password/token)'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build and Dockerize
+    outputs:
+      image: ${{ steps.docker.outputs.image }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      # ============================================================
+      # GO SETUP
+      # ============================================================
+      - name: Setup and Build Go
+        if: inputs.LANGUAGE == 'go'
+        uses: ./.github/actions/setup-go
+        with:
+          go_version: ${{ inputs.RUNTIME_VERSION || '1.20' }}
+          build_command: ${{ inputs.BUILD_COMMAND }}
+          docker_file_path: ${{ inputs.DOCKER_FILE_PATH }}
+          artifact_path: ${{ inputs.ARTIFACT_PATH }}
+          extra_dependencies: ${{ inputs.EXTRA_DEPENDENCIES }}
+          dependencies_command: ${{ inputs.DEPENDENCIES_COMMAND }}
+          pat: ${{ secrets.PAT }}
+
+      # ============================================================
+      # NODE SETUP
+      # ============================================================
+      - name: Setup and Build Node
+        if: inputs.LANGUAGE == 'node'
+        uses: ./.github/actions/setup-node
+        with:
+          node_version: ${{ inputs.RUNTIME_VERSION || '18' }}
+          build_command: ${{ inputs.BUILD_COMMAND }}
+          dependencies_flag: ${{ inputs.DEPENDENCIES_FLAG }}
+          npm_token: ${{ secrets.NPM_TOKEN }}
+
+      # ============================================================
+      # GENERIC SETUP
+      # ============================================================
+      - name: Build Generic
+        if: inputs.LANGUAGE == 'generic'
+        shell: bash
+        run: |
+          echo "::warning::Generic build mode - skipping language-specific dependency setup."
+          cd ${{ inputs.DOCKER_FILE_PATH }}
+          ${{ inputs.BUILD_COMMAND }}
+
+      # ============================================================
+      # DOCKER BUILD AND PUSH
+      # ============================================================
+      - name: Docker build and push
+        uses: ./.github/actions/docker-build-push
+        id: docker
+        with:
+          registry_type: ${{ inputs.REGISTRY_TYPE }}
+          image_registry: ${{ inputs.IMAGE_REGISTRY }}
+          registry_project: ${{ inputs.REGISTRY_PROJECT }}
+          registry_repo: ${{ inputs.REGISTRY_REPO }}
+          svc_name: ${{ inputs.SVC_NAME }}
+          image_tag: ${{ inputs.IMAGE_TAG }}
+          dockerfile_path: ${{ inputs.DOCKER_FILE_PATH }}
+          build_arguments: |
+            ${{ inputs.LANGUAGE == 'node' && format('NPM_TOKEN={0}', secrets.NPM_TOKEN) || '' }}
+            ${{ inputs.BUILD_ARGUMENTS }}
+          registry_credentials: ${{ secrets.REGISTRY_CREDENTIALS }}
+          registry_username: ${{ inputs.REGISTRY_USERNAME }}
+          aws_access_key_id: ${{ inputs.AWS_ACCESS_KEY_ID }}
+          aws_region: ${{ inputs.AWS_REGION }}
+          azure_client_id: ${{ inputs.AZURE_CLIENT_ID }}
+          azure_tenant_id: ${{ inputs.AZURE_TENANT_ID }}
+          github_actor: ${{ github.actor }}
+          github_token: ${{ github.token }}

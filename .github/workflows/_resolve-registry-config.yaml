@@ -1,0 +1,149 @@
+name: "Resolve Registry Config"
+
+on:
+  workflow_call:
+    inputs:
+      REGISTRY_TYPE:
+        description: 'Registry type override (gar, gcr, ecr, acr, dockerhub, ghcr, custom)'
+        required: false
+        type: string
+        default: ''
+      IMAGE_REGISTRY:
+        description: 'Registry URL override'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_PROJECT:
+        description: 'Project/namespace override'
+        required: false
+        type: string
+        default: ''
+      REGISTRY_REPO:
+        description: 'Repository name override'
+        required: false
+        type: string
+        default: ''
+
+    outputs:
+      registry_type:
+        description: 'Resolved registry type'
+        value: ${{ jobs.resolve.outputs.registry_type }}
+      image_registry:
+        description: 'Resolved registry URL'
+        value: ${{ jobs.resolve.outputs.image_registry }}
+      registry_project:
+        description: 'Resolved project/namespace'
+        value: ${{ jobs.resolve.outputs.registry_project }}
+      registry_repo:
+        description: 'Resolved repository name'
+        value: ${{ jobs.resolve.outputs.registry_repo }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    name: Resolve Registry Config
+    outputs:
+      registry_type: ${{ steps.resolve.outputs.registry_type }}
+      image_registry: ${{ steps.resolve.outputs.image_registry }}
+      registry_project: ${{ steps.resolve.outputs.registry_project }}
+      registry_repo: ${{ steps.resolve.outputs.registry_repo }}
+
+    steps:
+      - name: Resolve registry configuration
+        id: resolve
+        run: |
+          # ---------------------------------------------------------------
+          # REGISTRY_TYPE and IMAGE_REGISTRY resolution
+          # - REGISTRY_TYPE can be inferred from IMAGE_REGISTRY URL
+          # - If both provided, they must be consistent
+          # ---------------------------------------------------------------
+
+          # Get IMAGE_REGISTRY (input -> vars)
+          IMAGE_REGISTRY=""
+          if [[ -n "${{ inputs.IMAGE_REGISTRY }}" ]]; then
+            IMAGE_REGISTRY="${{ inputs.IMAGE_REGISTRY }}"
+          elif [[ -n "${{ vars.IMAGE_REGISTRY }}" ]]; then
+            IMAGE_REGISTRY="${{ vars.IMAGE_REGISTRY }}"
+          fi
+
+          # Detect REGISTRY_TYPE from IMAGE_REGISTRY URL pattern
+          DETECTED_TYPE=""
+          if [[ -n "$IMAGE_REGISTRY" ]]; then
+            if [[ "$IMAGE_REGISTRY" =~ \.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com$ ]]; then
+              DETECTED_TYPE="ecr"
+            elif [[ "$IMAGE_REGISTRY" =~ \.azurecr\.io$ ]]; then
+              DETECTED_TYPE="acr"
+            elif [[ "$IMAGE_REGISTRY" =~ -docker\.pkg\.dev$ ]] || [[ "$IMAGE_REGISTRY" =~ ^[a-z]+-docker\.pkg\.dev$ ]]; then
+              DETECTED_TYPE="gar"
+            elif [[ "$IMAGE_REGISTRY" == "gcr.io" ]] || [[ "$IMAGE_REGISTRY" =~ ^[a-z]+\.gcr\.io$ ]]; then
+              DETECTED_TYPE="gcr"
+            elif [[ "$IMAGE_REGISTRY" == "ghcr.io" ]]; then
+              DETECTED_TYPE="ghcr"
+            elif [[ "$IMAGE_REGISTRY" == "docker.io" ]] || [[ "$IMAGE_REGISTRY" == "registry.hub.docker.com" ]]; then
+              DETECTED_TYPE="dockerhub"
+            else
+              DETECTED_TYPE="custom"
+            fi
+          fi
+
+          # Get explicit REGISTRY_TYPE (input -> vars)
+          EXPLICIT_TYPE=""
+          if [[ -n "${{ inputs.REGISTRY_TYPE }}" ]]; then
+            EXPLICIT_TYPE="${{ inputs.REGISTRY_TYPE }}"
+          elif [[ -n "${{ vars.REGISTRY_TYPE }}" ]]; then
+            EXPLICIT_TYPE="${{ vars.REGISTRY_TYPE }}"
+          fi
+
+          # Resolve final REGISTRY_TYPE
+          if [[ -n "$DETECTED_TYPE" && -n "$EXPLICIT_TYPE" ]]; then
+            # Both present - must match
+            if [[ "$DETECTED_TYPE" != "$EXPLICIT_TYPE" ]]; then
+              echo "ERROR: REGISTRY_TYPE mismatch. IMAGE_REGISTRY '$IMAGE_REGISTRY' implies '$DETECTED_TYPE' but REGISTRY_TYPE is '$EXPLICIT_TYPE'"
+              exit 1
+            fi
+            REGISTRY_TYPE="$EXPLICIT_TYPE"
+          elif [[ -n "$DETECTED_TYPE" ]]; then
+            # Only IMAGE_REGISTRY provided - use detected type
+            REGISTRY_TYPE="$DETECTED_TYPE"
+          elif [[ -n "$EXPLICIT_TYPE" ]]; then
+            # Only REGISTRY_TYPE provided - use it and set default IMAGE_REGISTRY
+            REGISTRY_TYPE="$EXPLICIT_TYPE"
+            case "$REGISTRY_TYPE" in
+              gcr) IMAGE_REGISTRY="gcr.io" ;;
+              ghcr) IMAGE_REGISTRY="ghcr.io" ;;
+              dockerhub) IMAGE_REGISTRY="docker.io" ;;
+            esac
+          else
+            echo "ERROR: Either REGISTRY_TYPE or IMAGE_REGISTRY is required"
+            exit 1
+          fi
+
+          echo "registry_type=$REGISTRY_TYPE" >> "$GITHUB_OUTPUT"
+          echo "image_registry=$IMAGE_REGISTRY" >> "$GITHUB_OUTPUT"
+
+          # ---------------------------------------------------------------
+          # REGISTRY_PROJECT: input -> vars.REGISTRY_PROJECT -> vars.GAR_PROJECT (legacy)
+          # ---------------------------------------------------------------
+          if [[ -n "${{ inputs.REGISTRY_PROJECT }}" ]]; then
+            echo "registry_project=${{ inputs.REGISTRY_PROJECT }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.REGISTRY_PROJECT }}" ]]; then
+            echo "registry_project=${{ vars.REGISTRY_PROJECT }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.GAR_PROJECT }}" ]]; then
+            echo "registry_project=${{ vars.GAR_PROJECT }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "registry_project=" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ---------------------------------------------------------------
+          # REGISTRY_REPO: input -> vars.REGISTRY_REPO -> vars.GAR_REGISTRY (legacy) -> vars.APP_NAME
+          # ---------------------------------------------------------------
+          if [[ -n "${{ inputs.REGISTRY_REPO }}" ]]; then
+            echo "registry_repo=${{ inputs.REGISTRY_REPO }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.REGISTRY_REPO }}" ]]; then
+            echo "registry_repo=${{ vars.REGISTRY_REPO }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.GAR_REGISTRY }}" ]]; then
+            echo "registry_repo=${{ vars.GAR_REGISTRY }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "registry_repo=${{ vars.APP_NAME }}" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash

@@ -1,0 +1,69 @@
+name: "Update Configmap"
+
+on:
+  workflow_call:
+    inputs:
+      CONFIGMAP_ARTIFACT:
+        description: 'Artifact name containing ConfigMap'
+        required: true
+        type: string
+      NAMESPACE:
+        description: 'Kubernetes namespace'
+        required: true
+        type: string
+      ENVIRONMENT:
+        description: 'Environment name (stage, prod). Used for logging'
+        required: false
+        type: string
+        default: ''
+      # Cluster auth inputs
+      CLUSTER_PROJECT:
+        description: 'GCP project for cluster. Required for GKE auth'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_NAME:
+        description: 'Kubernetes cluster name. Required for GKE/EKS/AKS auth'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_REGION:
+        description: 'Cluster region. Required for GKE/EKS auth'
+        required: false
+        type: string
+        default: ''
+      AZURE_RESOURCE_GROUP:
+        description: 'Azure resource group. Required for AKS auth'
+        required: false
+        type: string
+        default: ''
+
+    secrets:
+      CLUSTER_CREDENTIALS:
+        description: 'Cluster auth credentials. Auto-detected format: GCP SA JSON, AWS JSON, Azure JSON, base64 kubeconfig'
+        required: true
+
+jobs:
+  update_configmap:
+    runs-on: ubuntu-latest
+    name: Update Configmap
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Authenticate to cluster
+        uses: ./.github/actions/cluster-auth
+        with:
+          environment: ${{ inputs.ENVIRONMENT }}
+          credentials: ${{ secrets.CLUSTER_CREDENTIALS }}
+          cluster_name: ${{ inputs.CLUSTER_NAME }}
+          cluster_region: ${{ inputs.CLUSTER_REGION }}
+          cluster_project: ${{ inputs.CLUSTER_PROJECT }}
+          azure_resource_group: ${{ inputs.AZURE_RESOURCE_GROUP }}
+
+      - name: Apply ConfigMap
+        uses: ./.github/actions/apply-configmap
+        with:
+          artifact_name: ${{ inputs.CONFIGMAP_ARTIFACT }}
+          namespace: ${{ inputs.NAMESPACE }}

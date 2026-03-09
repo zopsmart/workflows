@@ -1,0 +1,70 @@
+name: 'Validate Tag'
+description: 'Validate semantic version tag is latest and ahead of previous'
+
+inputs:
+  tag:
+    description: 'The tag to validate (e.g., v1.2.3)'
+    required: true
+
+outputs:
+  valid:
+    description: 'true if tag is valid'
+    value: ${{ steps.validate.outputs.valid }}
+  previous_tag:
+    description: 'The previous tag for comparison'
+    value: ${{ steps.validate.outputs.previous_tag }}
+  error:
+    description: 'Error message if validation failed'
+    value: ${{ steps.validate.outputs.error }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate tag
+      id: validate
+      shell: bash
+      run: |
+        CURRENT_TAG="${{ inputs.tag }}"
+
+        # Get all version tags sorted semantically (descending)
+        TAGS=$(git tag -l 'v*' --sort=-v:refname)
+
+        # Find previous tag (first tag that's not the current one)
+        PREVIOUS_TAG=""
+        for tag in $TAGS; do
+          if [[ "$tag" != "$CURRENT_TAG" ]]; then
+            PREVIOUS_TAG="$tag"
+            break
+          fi
+        done
+
+        echo "previous_tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+
+        if [[ -z "$PREVIOUS_TAG" ]]; then
+          echo "First tag, no previous to compare"
+          echo "valid=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Extract version numbers (strip 'v' prefix)
+        CURRENT_VER="${CURRENT_TAG#v}"
+        PREVIOUS_VER="${PREVIOUS_TAG#v}"
+
+        # Compare versions using sort -V
+        HIGHEST=$(printf '%s\n%s' "$CURRENT_VER" "$PREVIOUS_VER" | sort -V | tail -1)
+
+        if [[ "$HIGHEST" != "$CURRENT_VER" ]]; then
+          echo "error=Tag $CURRENT_TAG is not semantically ahead of $PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+          echo "valid=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Check if current tag's commit is reachable from branch head (not behind)
+        CURRENT_COMMIT=$(git rev-list -n 1 "$CURRENT_TAG")
+        if ! git merge-base --is-ancestor "$PREVIOUS_TAG" "$CURRENT_TAG" 2>/dev/null; then
+          echo "error=Tag $CURRENT_TAG commit is not ahead of $PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+          echo "valid=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "valid=true" >> "$GITHUB_OUTPUT"

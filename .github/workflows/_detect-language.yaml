@@ -1,0 +1,56 @@
+name: "Detect Language"
+
+on:
+  workflow_call:
+    inputs:
+      BUILD_COMMAND:
+        description: 'Build command to analyze for language detection'
+        required: true
+        type: string
+      LANGUAGE:
+        description: 'Explicit language override (go, node, or generic)'
+        required: false
+        type: string
+        default: ''
+
+    outputs:
+      language:
+        description: 'Detected or specified language (go, node, or generic)'
+        value: ${{ jobs.detect.outputs.language }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    name: Detect Language
+    outputs:
+      language: ${{ steps.detect.outputs.language }}
+    steps:
+      - name: Detect language from BUILD_COMMAND
+        id: detect
+        run: |
+          BUILD_CMD="${{ inputs.BUILD_COMMAND }}"
+          INPUT_LANG="${{ inputs.LANGUAGE }}"
+
+          # If LANGUAGE is explicitly provided, use it
+          if [[ -n "$INPUT_LANG" ]]; then
+            if [[ "$INPUT_LANG" != "go" && "$INPUT_LANG" != "node" && "$INPUT_LANG" != "generic" ]]; then
+              echo "ERROR: LANGUAGE must be 'go', 'node', or 'generic', got '$INPUT_LANG'"
+              exit 1
+            fi
+            echo "language=$INPUT_LANG" >> "$GITHUB_OUTPUT"
+            echo "Using explicitly provided LANGUAGE: $INPUT_LANG"
+            exit 0
+          fi
+
+          # Auto-detect from BUILD_COMMAND
+          if echo "$BUILD_CMD" | grep -qE '\bgo\s+(build|run|test|install)\b'; then
+            echo "language=go" >> "$GITHUB_OUTPUT"
+            echo "Detected language: go (from BUILD_COMMAND containing 'go build/run/test/install')"
+          elif echo "$BUILD_CMD" | grep -qE '\b(yarn|npm)\b'; then
+            echo "language=node" >> "$GITHUB_OUTPUT"
+            echo "Detected language: node (from BUILD_COMMAND containing 'yarn' or 'npm')"
+          else
+            echo "::warning::Unable to detect language from BUILD_COMMAND '$BUILD_CMD'. Skipping language-specific dependency setup."
+            echo "language=generic" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash

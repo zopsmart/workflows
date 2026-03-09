@@ -1,0 +1,136 @@
+name: "Deploy"
+
+on:
+  workflow_call:
+    inputs:
+      SVC_NAME:
+        description: 'Service name (k8s deployment/cronjob name)'
+        required: true
+        type: string
+      TYPE:
+        description: 'deployment or cron'
+        required: false
+        type: string
+        default: 'deployment'
+      IMAGE:
+        description: 'Full image URL with tag'
+        required: true
+        type: string
+      NAMESPACE:
+        description: 'Kubernetes namespace'
+        required: true
+        type: string
+      ENVIRONMENT:
+        description: 'Environment name (stage, prod). Used for logging'
+        required: false
+        type: string
+        default: ''
+      # Cluster auth inputs
+      CLUSTER_PROJECT:
+        description: 'GCP project for cluster. Required for GKE auth'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_NAME:
+        description: 'Kubernetes cluster name. Required for GKE/EKS/AKS auth'
+        required: false
+        type: string
+        default: ''
+      CLUSTER_REGION:
+        description: 'Cluster region. Required for GKE/EKS auth'
+        required: false
+        type: string
+        default: ''
+      AZURE_RESOURCE_GROUP:
+        description: 'Azure resource group. Required for AKS auth'
+        required: false
+        type: string
+        default: ''
+      # Deploy options
+      DEPLOY_METHOD:
+        description: 'kubectl or helm'
+        required: false
+        type: string
+        default: 'kubectl'
+      HELM_VALUES_PATH:
+        description: 'Path to Helm values file (required if DEPLOY_METHOD=helm)'
+        required: false
+        type: string
+        default: ''
+      APP_VERSION:
+        description: 'Application version to set as env var (optional, used for prod deployments)'
+        required: false
+        type: string
+        default: ''
+      # ConfigMap options
+      CONFIGMAP_ARTIFACT:
+        description: 'Artifact name containing ConfigMap (empty skips)'
+        required: false
+        type: string
+        default: ''
+
+    secrets:
+      CLUSTER_CREDENTIALS:
+        description: 'Cluster auth credentials. Auto-detected format: GCP SA JSON, AWS JSON, Azure JSON, base64 kubeconfig'
+        required: true
+      PAT:
+        description: 'GitHub PAT for Helm repo access'
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Authenticate to cluster
+        uses: ./.github/actions/cluster-auth
+        with:
+          environment: ${{ inputs.ENVIRONMENT }}
+          credentials: ${{ secrets.CLUSTER_CREDENTIALS }}
+          cluster_name: ${{ inputs.CLUSTER_NAME }}
+          cluster_region: ${{ inputs.CLUSTER_REGION }}
+          cluster_project: ${{ inputs.CLUSTER_PROJECT }}
+          azure_resource_group: ${{ inputs.AZURE_RESOURCE_GROUP }}
+
+      # kubectl deployment
+      - name: Update Deployment Image (kubectl)
+        if: inputs.DEPLOY_METHOD == 'kubectl' && inputs.TYPE == 'deployment'
+        run: kubectl set image deployment/${{ inputs.SVC_NAME }} ${{ inputs.SVC_NAME }}=${{ inputs.IMAGE }} --namespace ${{ inputs.NAMESPACE }}
+
+      - name: Update CronJob Image (kubectl)
+        if: inputs.DEPLOY_METHOD == 'kubectl' && inputs.TYPE == 'cron'
+        run: kubectl set image cronjobs/${{ inputs.SVC_NAME }} ${{ inputs.SVC_NAME }}=${{ inputs.IMAGE }} --namespace ${{ inputs.NAMESPACE }}
+
+      # Helm deployment
+      - name: Setup Helm Chart
+        if: inputs.DEPLOY_METHOD == 'helm'
+        run: git clone https://${{ secrets.PAT }}@github.com/zopsmart/helm.git
+
+      - name: Add Helm Repo
+        if: inputs.DEPLOY_METHOD == 'helm'
+        run: |
+          helm repo add helm \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.PAT }}" \
+            "https://raw.githubusercontent.com/zopsmart/helm/main/charts"
+
+      - name: Deploy with Helm
+        if: inputs.DEPLOY_METHOD == 'helm'
+        run: helm upgrade --install --set image=${{ inputs.IMAGE }} ${{ inputs.SVC_NAME }} helm/service -f ${{ inputs.HELM_VALUES_PATH }} -n ${{ inputs.NAMESPACE }} --version v0.1.4
+
+      # Set app version (for production deployments)
+      - name: Set App Version
+        if: inputs.APP_VERSION != '' && inputs.TYPE == 'deployment'
+        run: kubectl set env deployment/${{ inputs.SVC_NAME }} APP_VERSION=${{ inputs.APP_VERSION }} -n ${{ inputs.NAMESPACE }}
+
+      # Apply ConfigMap (if artifact provided)
+      - name: Apply ConfigMap
+        if: inputs.CONFIGMAP_ARTIFACT != ''
+        uses: ./.github/actions/apply-configmap
+        with:
+          artifact_name: ${{ inputs.CONFIGMAP_ARTIFACT }}
+          namespace: ${{ inputs.NAMESPACE }}
