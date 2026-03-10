@@ -87,7 +87,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Authenticate to cluster
-        uses: zopsmart/workflows/.github/actions/cluster-auth@main
+        uses: zopsmart/workflows/.github/actions/cluster-auth@pathReferenceFix
         with:
           environment: ${{ inputs.ENVIRONMENT }}
           credentials: ${{ secrets.CLUSTER_CREDENTIALS }}
@@ -130,7 +130,7 @@ jobs:
       # Apply ConfigMap (if artifact provided)
       - name: Apply ConfigMap
         if: inputs.CONFIGMAP_ARTIFACT != ''
-        uses: zopsmart/workflows/.github/actions/apply-configmap@main
+        uses: zopsmart/workflows/.github/actions/apply-configmap@pathReferenceFix
         with:
           artifact_name: ${{ inputs.CONFIGMAP_ARTIFACT }}
           namespace: ${{ inputs.NAMESPACE }}

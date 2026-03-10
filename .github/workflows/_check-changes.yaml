@@ -116,7 +116,7 @@ jobs:
       - name: Generate ConfigMap
         id: generate
         if: steps.check.outputs.configmap == 'true' && inputs.SVC_NAME != ''
-        uses: zopsmart/workflows/.github/actions/generate-configmap@main
+        uses: zopsmart/workflows/.github/actions/generate-configmap@pathReferenceFix
         with:
           svc_name: ${{ inputs.SVC_NAME }}
           env_file_path: ${{ inputs.ENV_FILE_PATH }}

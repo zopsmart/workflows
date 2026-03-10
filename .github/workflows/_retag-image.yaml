@@ -62,7 +62,7 @@ jobs:
 
       - name: Resolve image path
         id: registry
-        uses: zopsmart/workflows/.github/actions/resolve-image-path@main
+        uses: zopsmart/workflows/.github/actions/resolve-image-path@pathReferenceFix
         with:
           registry_type: ${{ inputs.REGISTRY_TYPE }}
           image_registry: ${{ inputs.IMAGE_REGISTRY }}
@@ -71,7 +71,7 @@ jobs:
           svc_name: ${{ inputs.SVC_NAME }}
 
       - name: Login to registry
-        uses: zopsmart/workflows/.github/actions/registry-login@main
+        uses: zopsmart/workflows/.github/actions/registry-login@pathReferenceFix
         with:
           registry_type: ${{ inputs.REGISTRY_TYPE }}
           image_registry: ${{ steps.registry.outputs.image_registry }}
