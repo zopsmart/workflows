@@ -191,7 +191,7 @@ jobs:
   # RESOLVE CONFIGURATION
   # ============================================================
   resolve-registry:
-    uses: ./.github/workflows/_resolve-registry-config.yaml
+    uses: zopsmart/workflows/.github/workflows/_resolve-registry-config.yaml@main
     with:
       REGISTRY_TYPE: ${{ inputs.REGISTRY_TYPE }}
       IMAGE_REGISTRY: ${{ inputs.IMAGE_REGISTRY }}
@@ -199,7 +199,7 @@ jobs:
       REGISTRY_REPO: ${{ inputs.REGISTRY_REPO }}
 
   resolve-deploy:
-    uses: ./.github/workflows/_resolve-deploy-config.yaml
+    uses: zopsmart/workflows/.github/workflows/_resolve-deploy-config.yaml@main
     with:
       ENVIRONMENT: stage
       CLUSTER_PROJECT: ${{ inputs.CLUSTER_PROJECT }}
@@ -210,7 +210,7 @@ jobs:
       ENV_FILE_PATH: ${{ inputs.ENV_FILE_PATH }}
 
   detect-language:
-    uses: ./.github/workflows/_detect-language.yaml
+    uses: zopsmart/workflows/.github/workflows/_detect-language.yaml@main
     with:
       BUILD_COMMAND: ${{ inputs.BUILD_COMMAND }}
       LANGUAGE: ${{ inputs.LANGUAGE }}
@@ -221,7 +221,7 @@ jobs:
   check-changes:
     needs: resolve-deploy
     if: github.ref == 'refs/heads/development'
-    uses: ./.github/workflows/_check-changes.yaml
+    uses: zopsmart/workflows/.github/workflows/_check-changes.yaml@main
     with:
       ENV_FILE_PATH: ${{ needs.resolve-deploy.outputs.env_file_path }}
       SVC_NAME: ${{ inputs.SVC_NAME }}
@@ -233,7 +233,7 @@ jobs:
   build:
     needs: [resolve-registry, detect-language, check-changes]
     if: needs.check-changes.outputs.deployment == 'true'
-    uses: ./.github/workflows/_build.yaml
+    uses: zopsmart/workflows/.github/workflows/_build.yaml@main
     with:
       LANGUAGE: ${{ needs.detect-language.outputs.language }}
       SVC_NAME: ${{ inputs.SVC_NAME }}
@@ -265,7 +265,7 @@ jobs:
       needs.check-changes.outputs.deployment == 'true' &&
       needs.build.result == 'success' &&
       needs.resolve-deploy.outputs.cluster_name != ''
-    uses: ./.github/workflows/_deploy.yaml
+    uses: zopsmart/workflows/.github/workflows/_deploy.yaml@main
     with:
       SVC_NAME: ${{ inputs.SVC_NAME }}
       TYPE: ${{ inputs.TYPE }}
@@ -293,7 +293,7 @@ jobs:
       needs.check-changes.outputs.deployment != 'true' &&
       needs.check-changes.outputs.configmap_artifact != '' &&
       needs.resolve-deploy.outputs.cluster_name != ''
-    uses: ./.github/workflows/_update-configmap.yaml
+    uses: zopsmart/workflows/.github/workflows/_update-configmap.yaml@main
     with:
       CONFIGMAP_ARTIFACT: ${{ needs.check-changes.outputs.configmap_artifact }}
       NAMESPACE: ${{ needs.resolve-deploy.outputs.namespace }}

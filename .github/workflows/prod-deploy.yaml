@@ -128,7 +128,7 @@ jobs:
   # ============================================================
   resolve-registry:
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/_resolve-registry-config.yaml
+    uses: zopsmart/workflows/.github/workflows/_resolve-registry-config.yaml@main
     with:
       REGISTRY_TYPE: ${{ inputs.REGISTRY_TYPE }}
       IMAGE_REGISTRY: ${{ inputs.IMAGE_REGISTRY }}
@@ -137,7 +137,7 @@ jobs:
 
   resolve-deploy:
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/_resolve-deploy-config.yaml
+    uses: zopsmart/workflows/.github/workflows/_resolve-deploy-config.yaml@main
     with:
       ENVIRONMENT: prod
       CLUSTER_PROJECT: ${{ inputs.CLUSTER_PROJECT }}
@@ -184,7 +184,7 @@ jobs:
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.validate-tag.outputs.valid == 'true'
-    uses: ./.github/workflows/_check-changes.yaml
+    uses: zopsmart/workflows/.github/workflows/_check-changes.yaml@main
     with:
       ENV_FILE_PATH: ${{ needs.resolve-deploy.outputs.env_file_path }}
       SVC_NAME: ${{ inputs.SVC_NAME }}
@@ -200,7 +200,7 @@ jobs:
     if: |
       always() &&
       needs.validate-tag.outputs.valid == 'true'
-    uses: ./.github/workflows/_retag-image.yaml
+    uses: zopsmart/workflows/.github/workflows/_retag-image.yaml@main
     with:
       SVC_NAME: ${{ inputs.SVC_NAME }}
       REGISTRY_TYPE: ${{ needs.resolve-registry.outputs.registry_type }}
@@ -222,7 +222,7 @@ jobs:
       needs.validate-tag.outputs.valid == 'true' &&
       needs.retag.outputs.tag_exists == 'true' &&
       needs.resolve-deploy.outputs.cluster_name != ''
-    uses: ./.github/workflows/_deploy.yaml
+    uses: zopsmart/workflows/.github/workflows/_deploy.yaml@main
     with:
       SVC_NAME: ${{ inputs.SVC_NAME }}
       TYPE: ${{ inputs.TYPE }}
