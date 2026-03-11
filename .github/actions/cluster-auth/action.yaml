@@ -221,6 +221,8 @@ runs:
     - name: Setup gcloud CLI
       if: steps.detect.outputs.auth_method == 'gke'
       uses: google-github-actions/setup-gcloud@v3
+      with:
+        install_components: 'gke-gcloud-auth-plugin'
 
     - name: Get GKE credentials
       if: steps.detect.outputs.auth_method == 'gke'
