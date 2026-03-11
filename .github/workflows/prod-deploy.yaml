@@ -165,7 +165,7 @@ jobs:
 
       - name: Validate tag
         id: validate
-        uses: zopsmart/workflows/.github/actions/validate-tag@pathReferenceFix
+        uses: zopsmart/workflows/.github/actions/validate-tag@main
         with:
           tag: ${{ github.ref_name }}
 
