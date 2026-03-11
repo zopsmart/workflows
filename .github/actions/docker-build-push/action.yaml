@@ -79,7 +79,7 @@ runs:
     # ============================================================
     - name: Resolve image path
       id: registry
-      uses: ./.github/actions/resolve-image-path
+      uses: zopsmart/workflows/.github/actions/resolve-image-path@main
       with:
         registry_type: ${{ inputs.registry_type }}
         image_registry: ${{ inputs.image_registry }}
@@ -92,7 +92,7 @@ runs:
     # LOGIN TO REGISTRY
     # ============================================================
     - name: Login to registry
-      uses: ./.github/actions/registry-login
+      uses: zopsmart/workflows/.github/actions/registry-login@main
       with:
         registry_type: ${{ inputs.registry_type }}
         image_registry: ${{ steps.registry.outputs.image_registry }}
