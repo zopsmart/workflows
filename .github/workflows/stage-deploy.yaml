@@ -220,7 +220,7 @@ jobs:
   # ============================================================
   check-changes:
     needs: resolve-deploy
-    if: github.ref == 'refs/heads/development'
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_check-changes.yaml
     with:
       ENV_FILE_PATH: ${{ needs.resolve-deploy.outputs.env_file_path }}
