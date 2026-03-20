@@ -279,7 +279,7 @@ jobs:
       - name: Run Go tests and lint
         if: |
           needs.detect-language.outputs.language == 'go'
-        uses: ./.github/actions/test-go
+        uses: zopsmart/workflows/.github/actions/test-go@addTestAndLints
         with:
           GO_VERSION:               ${{ inputs.GO_VERSION }}
           LINTER_VERSION:           ${{ inputs.LINTER_VERSION }}
@@ -299,7 +299,7 @@ jobs:
       - name: Run Node tests and lint
         if: |
           needs.detect-language.outputs.language == 'node'
-        uses: ./.github/actions/test-node
+        uses: zopsmart/workflows/.github/actions/test-node@addTestAndLints
         with:
           NODE_VERSION:       ${{ inputs.NODE_VERSION }}
           PACKAGE_MANAGER:    ${{ inputs.NODE_PACKAGE_MANAGER }}
