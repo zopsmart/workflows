@@ -141,17 +141,3 @@ jobs:
         with:
           github_token: ${{ secrets.PAT }}
           branch: ${{ github.ref }}
-      # ── 3. Emit SHA ────────────────────────────────────────────────────────────
-  emit-sha:
-    needs: [test-node]
-    if: |
-        github.event_name == 'push' &&
-        (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development')
-    runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.output-sha.outputs.sha }}
-    steps:
-      - name: Emit commit SHA
-        id: output-sha
-        run: |
-          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"      

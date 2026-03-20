@@ -311,18 +311,4 @@ jobs:
 
       - name: Stop server
         if: ${{ inputs.POSTMAN_ENABLED }}
-        run: pkill main || true
-      # ── 3. Emit SHA ────────────────────────────────────────────────────────────
-  emit-sha:
-    needs: [test-go]
-    if: |
-        github.event_name == 'push' &&
-        (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development')
-    runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.output-sha.outputs.sha }}
-    steps:
-      - name: Emit commit SHA
-        id: output-sha
-        run: |
-          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"    
+        run: pkill main || true  
