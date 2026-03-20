@@ -1,0 +1,328 @@
+name: 🧪 Test and Lint
+
+on:
+  workflow_call:
+    outputs:
+      SHA:
+        description: "Commit SHA after badge commits (use for downstream build/deploy)"
+        value: ${{ jobs.run.outputs.sha }}
+
+    # ===============================================================
+    # LANGUAGE OVERRIDE  (leave blank → _detect-language resolves it)
+    # ===============================================================
+    inputs:
+      LANGUAGE:
+        description: 'Build language: go, node, or generic (auto-detected from BUILD_COMMAND if not specified)'
+        required: false
+        type: string
+        default: ''
+
+      # ===============================================================
+      # COMMON
+      # ===============================================================
+      BUILD_COMMAND:
+        description: 'Build command used by _detect-language for auto-detection'
+        required: false
+        type: string
+        default: ''
+
+      # ===============================================================
+      # GO-SPECIFIC
+      # ===============================================================
+      GO_VERSION:
+        description: 'go version'
+        required: false
+        type: string
+        default: '1.22'
+      LINTER_VERSION:
+        description: 'linter version'
+        required: false
+        type: string
+        default: 'v1.54.2'
+      LINTER_TIMEOUT:
+        description: 'timeout value for linters'
+        required: false
+        type: string
+        default: '8m'
+      TESTCOVERAGE_THRESHOLD:
+        description: 'Minimum test coverage % (integer). Fails the job if not met.'
+        required: false
+        type: string
+        default: '0'
+      ADD_SCHEMA:
+        description: 'Run a DB schema setup command before tests'
+        required: false
+        type: boolean
+        default: false
+      SCHEMA_COMMAND:
+        description: 'command to load DB schema'
+        required: false
+        type: string
+        default: ''
+      EXTRA_DEPENDENCIES:
+        description: 'enable step to install extra dependencies'
+        required: false
+        type: boolean
+        default: false
+      DEPENDENCIES_COMMAND:
+        description: 'commands to install extra dependencies'
+        required: false
+        type: string
+        default: ''
+      MODULES:
+        description: 'Space-separated list of sub-module dirs to test separately'
+        required: false
+        type: string
+        default: ''
+
+      # Service toggles — only the enabled ones spin up a Docker service
+      MYSQL_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      POSTGRES_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      REDIS_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      ZIPKIN_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      ELASTIC_SEARCH_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      KAFKA_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      MONGO_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      MSSQL_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      DYNAMODB_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      CASSANDRA_ENABLE:
+        required: false
+        type: boolean
+        default: false
+
+      # Postman / integration tests
+      POSTMAN_ENABLED:
+        required: false
+        type: boolean
+        default: false
+      APP_NAME:
+        description: 'Postman collection filename (without extension)'
+        required: false
+        type: string
+        default: ''
+      SERVER_COMMAND:
+        description: 'Commands to run before starting the server for Postman tests'
+        required: false
+        type: string
+        default: ''
+
+      #  ===============================================================
+      # NODE-SPECIFIC
+      #  ===============================================================
+      NODE_VERSION:
+        required: false
+        type: string
+        default: '18'
+      NODE_PACKAGE_MANAGER:
+        description: 'npm or yarn'
+        required: false
+        type: string
+        default: 'yarn'
+      DEPENDENCIES_FLAG:
+        description: 'Extra flags for npm install / yarn install'
+        required: false
+        type: string
+        default: ''
+      TEST_COMMAND:
+        description: 'Command to run Node tests'
+        required: false
+        type: string
+        default: ''
+      LINTER_CHECKS:
+        required: false
+        type: boolean
+        default: true
+      PRETTIER_CHECKS:
+        required: false
+        type: boolean
+        default: true
+      ENABLE_TESTS:
+        required: false
+        type: boolean
+        default: true
+      USE_GAR_PKG:
+        description: 'Fetch packages from Google Artifact Registry instead of GitHub Packages'
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      PAT:
+        description: 'GitHub PAT for private Go/Node packages'
+        required: false
+      NPM_TOKEN:
+        description: 'NPM token (Node npm builds with private packages)'
+        required: false
+      REGISTRY_CREDENTIALS:
+        description: 'GCP service-account JSON (Node GAR builds)'
+        required: false
+
+#  ===============================================================
+#  JOBS
+#  ===============================================================
+jobs:
+
+  # ── 1. Detect language ────────────────────────────────────────────────────
+  detect-language:
+    uses: ./.github/workflows/_detect-language.yaml
+    with:
+      BUILD_COMMAND: ${{ inputs.BUILD_COMMAND }}
+      LANGUAGE: ${{ inputs.LANGUAGE }}
+
+  # ── 2. Run tests + lint ───────────────────────────────────────────────────
+  run:
+    needs: detect-language
+    name: 🧪 Test and Lint
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.output-sha.outputs.sha }}
+
+    # ── Docker services (Go only; no-op when image is empty string) ─────────
+    services:
+      mysql:
+        image: ${{ inputs.MYSQL_ENABLE && 'mysql:8.0.30' || '' }}
+        ports: ["3306:3306"]
+        env:
+          MYSQL_DATABASE: test
+          MYSQL_ROOT_PASSWORD: password
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+      postgres:
+        image: ${{ inputs.POSTGRES_ENABLE && 'postgres:15.1' || '' }}
+        ports: ["5432:5432"]
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_USER: postgres
+          POSTGRES_DB: test
+
+      redis:
+        image: ${{ inputs.REDIS_ENABLE && 'redis:5.0.14' || '' }}
+        ports: ["6379:6379"]
+        options: "--entrypoint redis-server"
+
+      zipkin:
+        image: ${{ inputs.ZIPKIN_ENABLE && 'openzipkin/zipkin' || '' }}
+        ports: ["9411:9411"]
+
+      elasticsearch:
+        image: ${{ inputs.ELASTIC_SEARCH_ENABLE && 'elasticsearch:6.8.6' || '' }}
+        ports: ["9200:9200", "2012:9200", "2013:9300"]
+        env:
+          discovery.type: single-node
+
+      kafka:
+        image: ${{ inputs.KAFKA_ENABLE && 'krisgeus/docker-kafka' || '' }}
+        ports: ["2008:2008", "2009:2009"]
+        env:
+          ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:2008,INTERNAL://localhost:2009'
+          LISTENERS: 'PLAINTEXT://0.0.0.0:2008,INTERNAL://0.0.0.0:2009'
+          SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT'
+          INTER_BROKER: INTERNAL
+          KAFKA_CREATE_TOPICS: test-topic
+          KAFKA_HOSTS: 'localhost:2008,localhost:2009'
+          KAFKA_TOPIC: test-topic
+
+      mongo:
+        image: ${{ inputs.MONGO_ENABLE && 'mongo:6.0.2' || '' }}
+        ports: ["27017:27017"]
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: admin123
+
+      mssql:
+        image: ${{ inputs.MSSQL_ENABLE && 'mcr.microsoft.com/mssql/server:2022-latest' || '' }}
+        ports: ["1433:1433"]
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: reallyStrongPwd123
+
+      dynamodb:
+        image: ${{ inputs.DYNAMODB_ENABLE && 'amazon/dynamodb-local' || '' }}
+        ports: ["2021:8000"]
+
+      cassandra:
+        image: ${{ inputs.CASSANDRA_ENABLE && 'cassandra:4.0.6' || '' }}
+        ports: ["9041:9042"]
+        options: --health-cmd "cqlsh --debug"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Go path ────────────────────────────────────────────────────────────
+      - name: Run Go tests and lint
+        if: |
+          needs.detect-language.outputs.language == 'go'
+        uses: ./.github/actions/test-go
+        with:
+          GO_VERSION:               ${{ inputs.GO_VERSION }}
+          LINTER_VERSION:           ${{ inputs.LINTER_VERSION }}
+          LINTER_TIMEOUT:           ${{ inputs.LINTER_TIMEOUT }}
+          TESTCOVERAGE_THRESHOLD:   ${{ inputs.TESTCOVERAGE_THRESHOLD }}
+          ADD_SCHEMA:               ${{ inputs.ADD_SCHEMA }}
+          SCHEMA_COMMAND:           ${{ inputs.SCHEMA_COMMAND }}
+          EXTRA_DEPENDENCIES:       ${{ inputs.EXTRA_DEPENDENCIES }}
+          DEPENDENCIES_COMMAND:     ${{ inputs.DEPENDENCIES_COMMAND }}
+          MODULES:                  ${{ inputs.MODULES }}
+          POSTMAN_ENABLED:          ${{ inputs.POSTMAN_ENABLED }}
+          APP_NAME:                 ${{ inputs.APP_NAME }}
+          SERVER_COMMAND:           ${{ inputs.SERVER_COMMAND }}
+          PAT:                      ${{ secrets.PAT }}
+
+      # ── Node path ──────────────────────────────────────────────────────────
+      - name: Run Node tests and lint
+        if: |
+          needs.detect-language.outputs.language == 'node'
+        uses: ./.github/actions/test-node
+        with:
+          NODE_VERSION:       ${{ inputs.NODE_VERSION }}
+          PACKAGE_MANAGER:    ${{ inputs.NODE_PACKAGE_MANAGER }}
+          DEPENDENCIES_FLAG:  ${{ inputs.DEPENDENCIES_FLAG }}
+          TEST_COMMAND:       ${{ inputs.TEST_COMMAND }}
+          LINTER_CHECKS:      ${{ inputs.LINTER_CHECKS }}
+          PRETTIER_CHECKS:    ${{ inputs.PRETTIER_CHECKS }}
+          ENABLE_TESTS:       ${{ inputs.ENABLE_TESTS }}
+          USE_GAR_PKG:        ${{ inputs.USE_GAR_PKG }}
+          PAT:                ${{ secrets.PAT }}
+          NPM_TOKEN:          ${{ secrets.NPM_TOKEN }}
+          REGISTRY_CREDENTIALS:         ${{ secrets.REGISTRY_CREDENTIALS }}
+
+      # ── Emit SHA (used by downstream build/deploy workflows) ───────────────
+      - name: Emit commit SHA
+        id: output-sha
+        if: |
+          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development') &&
+          github.event_name == 'push'
+        run: |
+          if [ "${{ github.ref }}" = 'refs/heads/main' ]; then
+            sha=$(git rev-parse HEAD)
+          else
+            sha="${{ github.sha }}"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
