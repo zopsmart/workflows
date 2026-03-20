@@ -1,0 +1,328 @@
+name: 🧪 Test and Lint — Go
+
+on:
+  workflow_call:
+    inputs:
+      GO_VERSION:
+        required: false
+        type: string
+        default: '1.22'
+      LINTER_VERSION:
+        required: false
+        type: string
+        default: 'v1.54.2'
+      LINTER_TIMEOUT:
+        required: false
+        type: string
+        default: '8m'
+      TESTCOVERAGE_THRESHOLD:
+        required: false
+        type: string
+        default: '0'
+      ADD_SCHEMA:
+        required: false
+        type: boolean
+        default: false
+      SCHEMA_COMMAND:
+        required: false
+        type: string
+        default: ''
+      EXTRA_DEPENDENCIES:
+        required: false
+        type: boolean
+        default: false
+      DEPENDENCIES_COMMAND:
+        required: false
+        type: string
+        default: ''
+      MODULES:
+        description: 'Space-separated list of sub-module dirs to test separately'
+        required: false
+        type: string
+        default: ''
+      POSTMAN_ENABLED:
+        required: false
+        type: boolean
+        default: false
+      APP_NAME:
+        description: 'Postman collection filename (without extension)'
+        required: false
+        type: string
+        default: ''
+      SERVER_COMMAND:
+        required: false
+        type: string
+        default: ''
+      MYSQL_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      POSTGRES_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      REDIS_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      ZIPKIN_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      ELASTIC_SEARCH_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      KAFKA_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      MONGO_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      MSSQL_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      DYNAMODB_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      CASSANDRA_ENABLE:
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      PAT:
+        required: false
+
+jobs:
+  test-go:
+    name: 🧪 Test and Lint — Go
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: ${{ inputs.MYSQL_ENABLE && 'mysql:8.0.30' || '' }}
+        ports: ["3306:3306"]
+        env:
+          MYSQL_DATABASE: test
+          MYSQL_ROOT_PASSWORD: password
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+      postgres:
+        image: ${{ inputs.POSTGRES_ENABLE && 'postgres:15.1' || '' }}
+        ports: ["5432:5432"]
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_USER: postgres
+          POSTGRES_DB: test
+
+      redis:
+        image: ${{ inputs.REDIS_ENABLE && 'redis:5.0.14' || '' }}
+        ports: ["6379:6379"]
+        options: "--entrypoint redis-server"
+
+      zipkin:
+        image: ${{ inputs.ZIPKIN_ENABLE && 'openzipkin/zipkin' || '' }}
+        ports: ["9411:9411"]
+
+      elasticsearch:
+        image: ${{ inputs.ELASTIC_SEARCH_ENABLE && 'elasticsearch:6.8.6' || '' }}
+        ports: ["9200:9200", "2012:9200", "2013:9300"]
+        env:
+          discovery.type: single-node
+
+      kafka:
+        image: ${{ inputs.KAFKA_ENABLE && 'krisgeus/docker-kafka' || '' }}
+        ports: ["2008:2008", "2009:2009"]
+        env:
+          ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:2008,INTERNAL://localhost:2009'
+          LISTENERS: 'PLAINTEXT://0.0.0.0:2008,INTERNAL://0.0.0.0:2009'
+          SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT'
+          INTER_BROKER: INTERNAL
+          KAFKA_CREATE_TOPICS: test-topic
+          KAFKA_HOSTS: 'localhost:2008,localhost:2009'
+          KAFKA_TOPIC: test-topic
+
+      mongo:
+        image: ${{ inputs.MONGO_ENABLE && 'mongo:6.0.2' || '' }}
+        ports: ["27017:27017"]
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: admin123
+
+      mssql:
+        image: ${{ inputs.MSSQL_ENABLE && 'mcr.microsoft.com/mssql/server:2022-latest' || '' }}
+        ports: ["1433:1433"]
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: reallyStrongPwd123
+
+      dynamodb:
+        image: ${{ inputs.DYNAMODB_ENABLE && 'amazon/dynamodb-local' || '' }}
+        ports: ["2021:8000"]
+
+      cassandra:
+        image: ${{ inputs.CASSANDRA_ENABLE && 'cassandra:4.0.6' || '' }}
+        ports: ["9041:9042"]
+        options: --health-cmd "cqlsh --debug"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.GO_VERSION }}
+
+      - name: Add DB schema
+        if: ${{ inputs.ADD_SCHEMA }}
+        run: ${{ inputs.SCHEMA_COMMAND }}
+
+      - name: Get Go dependencies
+        run: |
+          git config --global url."https://${{ secrets.PAT }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+          git config --global http.sslVerify false
+          go mod download
+          go install go.shabbyrobe.org/gocovmerge/cmd/gocovmerge@latest
+          go install github.com/AlexBeauchemin/gobadge@latest
+
+      - name: Extra dependencies
+        if: ${{ inputs.EXTRA_DEPENDENCIES }}
+        run: ${{ inputs.DEPENDENCIES_COMMAND }}
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: ${{ inputs.LINTER_VERSION }}
+          args: --timeout ${{ inputs.LINTER_TIMEOUT }}
+          skip-pkg-cache: true
+          skip-build-cache: true
+
+      - name: Test
+        run: |
+          mkdir -p temp/build
+
+          GOFR_ENV=test go test ./... -count=1 -v \
+            -coverprofile temp/cover1.out -coverpkg=./...
+
+          modules=$(echo "${{ inputs.MODULES }}" | xargs | tr -d '\r')
+          counter=2
+          for module in $modules; do
+            echo "Testing sub-module: $module"
+            cd "$module"
+            GOFR_ENV=test go test ./... -count=1 -v \
+              -coverprofile "../temp/cover${counter}.out" -coverpkg=./...
+            cd ..
+            counter=$((counter + 1))
+          done
+
+          gocovmerge temp/cover*.out > temp/cover.out
+          grep -v "mock_interface" temp/cover.out \
+            | grep -v "migrations" > temp/coverage.out
+
+      - name: Coverage report
+        run: go tool cover -func=temp/coverage.out | tee temp/c.out
+
+      - name: Coverage quality gate
+        run: |
+          threshold="${{ inputs.TESTCOVERAGE_THRESHOLD }}"
+          echo "Threshold : ${threshold}%"
+          total=$(go tool cover -func=temp/coverage.out \
+            | grep 'total:' | grep -Eo '[0-9]+\.[0-9]+')
+          echo "Coverage  : ${total}%"
+          totalInt=${total%.*}
+          if [ "$totalInt" -ge "$threshold" ]; then
+            echo "OK"
+          else
+            echo "Coverage ${total}% is below threshold ${threshold}%. Add more tests or lower the threshold."
+            exit 1
+          fi
+
+      - name: Generate and commit coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          gobadge -filename=temp/c.out -target="$(pwd)/README.md"
+          git config --global user.email "action@github.com"
+          git config --global user.name  "GitHub-Action"
+          git config --global --add safe.directory \
+            "/__w/$(basename ${{ github.repository }})/$(basename ${{ github.repository }})"
+          git diff --quiet --exit-code README.md || \
+            git commit README.md -m "Update coverage badge in README.md"
+
+      - name: Count nolint occurrences
+        id: count_nolint
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          count=$(grep -r -E '//\s*nolint' . | wc -l)
+          echo "nolint_count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Update README nolint badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          count=${{ steps.count_nolint.outputs.nolint_count }}
+          new_url="https://img.shields.io/badge/nolint_count-${count}-orange"
+
+          if grep -qP '\!\[nolint count\]\(\K[^)]+' README.md; then
+            existing=$(grep -oP '\!\[nolint count\]\(\K[^)]+' README.md)
+            old_count=$(echo "$existing" | grep -oP 'nolint_count-\K\d+')
+            if [ "$count" != "$old_count" ]; then
+              sed -i "s|![nolint count]($existing)|![nolint count]($new_url)|g" README.md
+              echo "Badge updated."
+            else
+              echo "Badge already up-to-date."
+            fi
+          else
+            echo "![nolint count]($new_url)" >> README.md
+            echo "Badge added."
+          fi
+
+      - name: Commit nolint badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name  "GitHub-Action"
+          git diff --quiet --exit-code README.md || \
+            git commit README.md -m "Update nolint count badge in README.md"
+
+      - name: Push badge commits
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ github.token }}
+          branch: ${{ github.ref }}
+
+      - name: Start server for Postman
+        if: ${{ inputs.POSTMAN_ENABLED }}
+        run: |
+          if [ -n "${{ inputs.SERVER_COMMAND }}" ]; then
+            ${{ inputs.SERVER_COMMAND }}
+          fi
+          GOFR_ENV=test go run main.go &
+          sleep 30
+
+      - name: Run Postman collection
+        if: ${{ inputs.POSTMAN_ENABLED }}
+        run: |
+          npm install -g newman
+          newman run "postman-collections/${{ inputs.APP_NAME }}.postman-collection.json"
+
+      - name: Stop server
+        if: ${{ inputs.POSTMAN_ENABLED }}
+        run: pkill main || true
+      # ── 3. Emit SHA ────────────────────────────────────────────────────────────
+  emit-sha:
+    needs: [test-go]
+    if: |
+        github.event_name == 'push' &&
+        (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.output-sha.outputs.sha }}
+    steps:
+      - name: Emit commit SHA
+        id: output-sha
+        run: |
+          echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"    
