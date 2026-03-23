@@ -13,16 +13,7 @@ on:
     inputs:
       LANGUAGE:
         description: 'Build language: go, node, or generic (auto-detected from BUILD_COMMAND if not specified)'
-        required: false
-        type: string
-        default: ''
-
-      # ===============================================================
-      # COMMON
-      # ===============================================================
-      BUILD_COMMAND:
-        description: 'Build command used by _detect-language for auto-detection'
-        required: false
+        required: true
         type: string
         default: ''
 
@@ -189,19 +180,11 @@ on:
 # ===============================================================
 jobs:
 
-  # ── 1. Detect language ─────────────────────────────────────────────────────
-  detect-language:
-    uses: ./.github/workflows/_detect-language.yaml
-    with:
-      BUILD_COMMAND: ${{ inputs.BUILD_COMMAND }}
-      LANGUAGE: ${{ inputs.LANGUAGE }}
-
-  # ── 2a. Go tests + lint ────────────────────────────────────────────────────
+  # ── 1a. Go tests + lint ────────────────────────────────────────────────────
   # Skipped automatically when language is 'node'
   test-go:
-    needs: detect-language
     if: |
-        needs.detect-language.outputs.language == 'go'
+        inputs.LANGUAGE == 'go'
     
     uses: ./.github/workflows/_test-go.yaml
     with:
@@ -233,9 +216,8 @@ jobs:
   # ── 2b. Node tests + lint ──────────────────────────────────────────────────
   # Skipped automatically when language is 'go'
   test-node:
-    needs: detect-language
     if: |
-        needs.detect-language.outputs.language == 'node' 
+        inputs.LANGUAGE == 'node' 
     
     uses: ./.github/workflows/_test-node.yaml
     with:
