@@ -8,7 +8,7 @@ on:
         value: ${{ jobs.emit-sha.outputs.sha }}
 
     # ===============================================================
-    # LANGUAGE OVERRIDE  (leave blank → _detect-language resolves it)
+    # LANGUAGE - reuired input
     # ===============================================================
     inputs:
       LANGUAGE:
