@@ -2,11 +2,6 @@ name: 🧪 Test and Lint
 
 on:
   workflow_call:
-    outputs:
-      SHA:
-        description: "Commit SHA after badge commits (use for downstream build/deploy)"
-        value: ${{ jobs.emit-sha.outputs.sha }}
-
     # ===============================================================
     # LANGUAGE - reuired input
     # ===============================================================
