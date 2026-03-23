@@ -1,0 +1,230 @@
+name: 🧪 Test and Lint
+
+on:
+  workflow_call:
+    # ===============================================================
+    # LANGUAGE - reuired input
+    # ===============================================================
+    inputs:
+      LANGUAGE:
+        description: 'Build language: go, node, or generic (auto-detected from BUILD_COMMAND if not specified)'
+        required: true
+        type: string
+        default: ''
+
+      # ===============================================================
+      # GO-SPECIFIC
+      # ===============================================================
+      GO_VERSION:
+        description: 'go version'
+        required: false
+        type: string
+        default: '1.22'
+      LINTER_VERSION:
+        description: 'linter version'
+        required: false
+        type: string
+        default: 'v1.54.2'
+      LINTER_TIMEOUT:
+        description: 'timeout value for linters'
+        required: false
+        type: string
+        default: '8m'
+      TESTCOVERAGE_THRESHOLD:
+        description: 'Minimum test coverage % (integer). Fails the job if not met.'
+        required: false
+        type: string
+        default: '0'
+      ADD_SCHEMA:
+        description: 'Run a DB schema setup command before tests'
+        required: false
+        type: boolean
+        default: false
+      SCHEMA_COMMAND:
+        description: 'command to load DB schema'
+        required: false
+        type: string
+        default: ''
+      EXTRA_DEPENDENCIES:
+        description: 'enable step to install extra dependencies'
+        required: false
+        type: boolean
+        default: false
+      DEPENDENCIES_COMMAND:
+        description: 'commands to install extra dependencies'
+        required: false
+        type: string
+        default: ''
+      MODULES:
+        description: 'Space-separated list of sub-module dirs to test separately'
+        required: false
+        type: string
+        default: ''
+
+      # Service toggles
+      MYSQL_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      POSTGRES_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      REDIS_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      ZIPKIN_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      ELASTIC_SEARCH_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      KAFKA_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      MONGO_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      MSSQL_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      DYNAMODB_ENABLE:
+        required: false
+        type: boolean
+        default: false
+      CASSANDRA_ENABLE:
+        required: false
+        type: boolean
+        default: false
+
+      # Postman / integration tests
+      POSTMAN_ENABLED:
+        required: false
+        type: boolean
+        default: false
+      APP_NAME:
+        description: 'Postman collection filename (without extension)'
+        required: false
+        type: string
+        default: ''
+      SERVER_COMMAND:
+        description: 'Commands to run before starting the server for Postman tests'
+        required: false
+        type: string
+        default: ''
+
+      # ===============================================================
+      # NODE-SPECIFIC
+      # ===============================================================
+      NODE_VERSION:
+        required: false
+        type: string
+        default: '18'
+      NODE_PACKAGE_MANAGER:
+        description: 'npm or yarn'
+        required: false
+        type: string
+        default: 'yarn'
+      DEPENDENCIES_FLAG:
+        description: 'Extra flags for npm install / yarn install'
+        required: false
+        type: string
+        default: ''
+      TEST_COMMAND:
+        description: 'Command to run Node tests'
+        required: false
+        type: string
+        default: ''
+      LINTER_CHECKS:
+        required: false
+        type: boolean
+        default: true
+      PRETTIER_CHECKS:
+        required: false
+        type: boolean
+        default: true
+      ENABLE_TESTS:
+        required: false
+        type: boolean
+        default: true
+      USE_GAR_PKG:
+        description: 'Fetch packages from Google Artifact Registry instead of GitHub Packages'
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      PAT:
+        description: 'GitHub PAT for private Go/Node packages'
+        required: false
+      NPM_TOKEN:
+        description: 'NPM token (Node npm builds with private packages)'
+        required: false
+      REGISTRY_CREDENTIALS:
+        description: 'GCP service-account JSON (Node GAR builds)'
+        required: false
+
+# ===============================================================
+# JOBS
+# ===============================================================
+jobs:
+
+  # ── 1a. Go tests + lint ────────────────────────────────────────────────────
+  # Skipped automatically when language is 'node'
+  test-go:
+    if: |
+        inputs.LANGUAGE == 'go'
+    
+    uses: ./.github/workflows/_test-go.yaml
+    with:
+      GO_VERSION:             ${{ inputs.GO_VERSION }}
+      LINTER_VERSION:         ${{ inputs.LINTER_VERSION }}
+      LINTER_TIMEOUT:         ${{ inputs.LINTER_TIMEOUT }}
+      TESTCOVERAGE_THRESHOLD: ${{ inputs.TESTCOVERAGE_THRESHOLD }}
+      ADD_SCHEMA:             ${{ inputs.ADD_SCHEMA }}
+      SCHEMA_COMMAND:         ${{ inputs.SCHEMA_COMMAND }}
+      EXTRA_DEPENDENCIES:     ${{ inputs.EXTRA_DEPENDENCIES }}
+      DEPENDENCIES_COMMAND:   ${{ inputs.DEPENDENCIES_COMMAND }}
+      MODULES:                ${{ inputs.MODULES }}
+      POSTMAN_ENABLED:        ${{ inputs.POSTMAN_ENABLED }}
+      APP_NAME:               ${{ inputs.APP_NAME }}
+      SERVER_COMMAND:         ${{ inputs.SERVER_COMMAND }}
+      MYSQL_ENABLE:           ${{ inputs.MYSQL_ENABLE }}
+      POSTGRES_ENABLE:        ${{ inputs.POSTGRES_ENABLE }}
+      REDIS_ENABLE:           ${{ inputs.REDIS_ENABLE }}
+      ZIPKIN_ENABLE:          ${{ inputs.ZIPKIN_ENABLE }}
+      ELASTIC_SEARCH_ENABLE:  ${{ inputs.ELASTIC_SEARCH_ENABLE }}
+      KAFKA_ENABLE:           ${{ inputs.KAFKA_ENABLE }}
+      MONGO_ENABLE:           ${{ inputs.MONGO_ENABLE }}
+      MSSQL_ENABLE:           ${{ inputs.MSSQL_ENABLE }}
+      DYNAMODB_ENABLE:        ${{ inputs.DYNAMODB_ENABLE }}
+      CASSANDRA_ENABLE:       ${{ inputs.CASSANDRA_ENABLE }}
+    secrets:
+      PAT: ${{ secrets.PAT }}
+
+  # ── 2b. Node tests + lint ──────────────────────────────────────────────────
+  # Skipped automatically when language is 'go'
+  test-node:
+    if: |
+        inputs.LANGUAGE == 'node' 
+    
+    uses: ./.github/workflows/_test-node.yaml
+    with:
+      NODE_VERSION:      ${{ inputs.NODE_VERSION }}
+      PACKAGE_MANAGER:   ${{ inputs.NODE_PACKAGE_MANAGER }}
+      DEPENDENCIES_FLAG: ${{ inputs.DEPENDENCIES_FLAG }}
+      TEST_COMMAND:      ${{ inputs.TEST_COMMAND }}
+      LINTER_CHECKS:     ${{ inputs.LINTER_CHECKS }}
+      PRETTIER_CHECKS:   ${{ inputs.PRETTIER_CHECKS }}
+      ENABLE_TESTS:      ${{ inputs.ENABLE_TESTS }}
+      USE_GAR_PKG:       ${{ inputs.USE_GAR_PKG }}
+    secrets:
+      PAT:                  ${{ secrets.PAT }}
+      NPM_TOKEN:            ${{ secrets.NPM_TOKEN }}
+      REGISTRY_CREDENTIALS: ${{ secrets.REGISTRY_CREDENTIALS }}

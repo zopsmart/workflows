@@ -1,0 +1,143 @@
+name: 🧪 Test and Lint — Node
+
+on:
+  workflow_call:
+    inputs:
+      NODE_VERSION:
+        required: false
+        type: string
+        default: '18'
+      PACKAGE_MANAGER:
+        description: 'npm or yarn'
+        required: false
+        type: string
+        default: 'yarn'
+      DEPENDENCIES_FLAG:
+        description: 'Extra flags for install command (e.g. --legacy-peer-deps)'
+        required: false
+        type: string
+        default: ''
+      TEST_COMMAND:
+        description: 'Command to run tests'
+        required: false
+        type: string
+        default: ''
+      LINTER_CHECKS:
+        required: false
+        type: boolean
+        default: true
+      PRETTIER_CHECKS:
+        required: false
+        type: boolean
+        default: true
+      ENABLE_TESTS:
+        required: false
+        type: boolean
+        default: true
+      USE_GAR_PKG:
+        description: 'Use Google Artifact Registry for @zopsmart scoped packages'
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      PAT:
+        required: false
+      NPM_TOKEN:
+        required: false
+      REGISTRY_CREDENTIALS:
+        required: false
+
+jobs:
+  test-node:
+    name: 🧪 Test and Lint — Node
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Authorize GCP service account
+        if: ${{ inputs.USE_GAR_PKG }}
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.REGISTRY_CREDENTIALS }}
+
+      # Registry selection matrix:
+      #   USE_GAR_PKG=true              → GAR, works for both npm and yarn
+      #   USE_GAR_PKG=false + yarn      → GitHub Packages via NPM_TOKEN
+      #   USE_GAR_PKG=false + npm       → GitHub Packages via PAT
+      - name: Install dependencies
+        run: |
+          if [ "${{ inputs.USE_GAR_PKG }}" = "true" ]; then
+            echo '${{ secrets.REGISTRY_CREDENTIALS }}' > credentials.json
+            PROJECT_ID=$(jq -r '.project_id' credentials.json)
+            ACCESS_TOKEN=$(gcloud auth print-access-token)
+            echo "@zopsmart:registry=https://us-central1-npm.pkg.dev/${PROJECT_ID}/npm-packages/" >> ~/.npmrc
+            echo "//us-central1-npm.pkg.dev/${PROJECT_ID}/npm-packages/:_authToken=${ACCESS_TOKEN}" >> ~/.npmrc
+          else
+            if [ "${{ inputs.PACKAGE_MANAGER }}" = "yarn" ]; then
+              echo "@zopsmart:registry=https://npm.pkg.github.com/" >> ~/.npmrc
+              echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
+            else
+              echo "@zopsmart:registry=https://npm.pkg.github.com/" >> ~/.npmrc
+              echo "//npm.pkg.github.com/:_authToken=${{ secrets.PAT }}" >> ~/.npmrc
+            fi
+          fi
+
+          if [ "${{ inputs.PACKAGE_MANAGER }}" = "yarn" ]; then
+            yarn install ${{ inputs.DEPENDENCIES_FLAG }}
+          else
+            npm install ${{ inputs.DEPENDENCIES_FLAG }}
+          fi
+
+          tar -zcf node_modules.zip node_modules/
+
+      - name: Run linter
+        if: ${{ inputs.LINTER_CHECKS }}
+        run: |
+          if [ "${{ inputs.PACKAGE_MANAGER }}" = "yarn" ]; then
+            CI=false yarn lint
+          else
+            CI=false npm run lint
+          fi
+
+      - name: Run Prettier check
+        if: ${{ inputs.PRETTIER_CHECKS }}
+        run: |
+          if [ "${{ inputs.PACKAGE_MANAGER }}" = "yarn" ]; then
+            CI=false yarn prettier:check
+          else
+            CI=false npm run prettier:check
+          fi
+
+      - name: Run tests
+        if: ${{ inputs.ENABLE_TESTS }}
+        run: ${{ inputs.TEST_COMMAND }}
+
+      - name: Generate coverage badges
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ENABLE_TESTS
+        run: |
+          if [ "${{ inputs.PACKAGE_MANAGER }}" = "yarn" ]; then
+            CI=false yarn make-badges
+          else
+            CI=false npm run make-badges
+          fi
+
+      - name: Commit coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ENABLE_TESTS
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+          git diff --quiet --exit-code README.md || \
+            git commit -a -m "Update badges in README.md"
+
+      - name: Push coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ENABLE_TESTS
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.PAT }}
+          branch: ${{ github.ref }}

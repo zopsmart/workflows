@@ -191,6 +191,7 @@ jobs:
   # RESOLVE CONFIGURATION
   # ============================================================
   resolve-registry:
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_resolve-registry-config.yaml
     with:
       REGISTRY_TYPE: ${{ inputs.REGISTRY_TYPE }}
@@ -199,6 +200,7 @@ jobs:
       REGISTRY_REPO: ${{ inputs.REGISTRY_REPO }}
 
   resolve-deploy:
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_resolve-deploy-config.yaml
     with:
       ENVIRONMENT: stage
@@ -210,6 +212,7 @@ jobs:
       ENV_FILE_PATH: ${{ inputs.ENV_FILE_PATH }}
 
   detect-language:
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_detect-language.yaml
     with:
       BUILD_COMMAND: ${{ inputs.BUILD_COMMAND }}

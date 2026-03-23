@@ -12,6 +12,7 @@ Reusable GitHub Actions workflows for building, pushing, and deploying container
 - ConfigMap management from env files
 - Helm and kubectl deployment methods
 - Config-only updates (no rebuild when only env changes)
+- Test and lint for Go and Node projects
 
 ## Supported Platforms
 
@@ -27,18 +28,26 @@ Reusable GitHub Actions workflows for building, pushing, and deploying container
 ## Quick Start
 
 ```yaml
-# .github/workflows/deploy.yaml
-name: Deploy
+# .github/workflows/ci.yaml
+name: CI/CD
 
 on:
   push:
     branches: [development]
+  pull_request:
   release:
     types: [published]
 
 jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: go
+    secrets: inherit
+
   stage:
     if: github.ref == 'refs/heads/development'
+    needs: test
     uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
     with:
       SVC_NAME: my-service
@@ -58,6 +67,83 @@ Set your registry and cluster details via [repository variables and secrets](#co
 See [`examples/`](examples/) for cloud-specific setups (GAR+GKE, ECR+EKS, ACR+AKS, GHCR, Docker Hub).
 
 ## Workflows
+
+### test-and-lint.yaml
+
+Runs tests and linting for Go or Node projects. Dispatches to the appropriate language-specific workflow based on `LANGUAGE`.
+
+**What it does:**
+1. Detects language (`go` or `node`) from the required `LANGUAGE` input
+2. For Go: runs `golangci-lint`, executes tests with optional coverage threshold, spins up any required service containers, and optionally runs Postman integration tests
+3. For Node: installs dependencies, runs ESLint and Prettier checks, and executes the test suite
+
+#### Required Inputs
+
+| Input | Description |
+|-------|-------------|
+| `LANGUAGE` | Build language: `go` or `node` |
+
+#### Go-Specific Inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `GO_VERSION` | `1.22` | Go version |
+| `LINTER_VERSION` | `v1.54.2` | golangci-lint version |
+| `LINTER_TIMEOUT` | `8m` | Linter timeout |
+| `TESTCOVERAGE_THRESHOLD` | `0` | Minimum test coverage %. Fails if not met |
+| `ADD_SCHEMA` | `false` | Run a DB schema setup command before tests |
+| `SCHEMA_COMMAND` | | Command to load DB schema |
+| `EXTRA_DEPENDENCIES` | `false` | Enable step to install extra dependencies |
+| `DEPENDENCIES_COMMAND` | | Commands to install extra dependencies |
+| `MODULES` | | Space-separated list of sub-module dirs to test separately |
+
+#### Go Service Toggles
+
+Spin up sidecar containers for integration tests:
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `MYSQL_ENABLE` | `false` | Start a MySQL container |
+| `POSTGRES_ENABLE` | `false` | Start a PostgreSQL container |
+| `REDIS_ENABLE` | `false` | Start a Redis container |
+| `ZIPKIN_ENABLE` | `false` | Start a Zipkin container |
+| `ELASTIC_SEARCH_ENABLE` | `false` | Start an Elasticsearch container |
+| `KAFKA_ENABLE` | `false` | Start a Kafka container |
+| `MONGO_ENABLE` | `false` | Start a MongoDB container |
+| `MSSQL_ENABLE` | `false` | Start an MSSQL container |
+| `DYNAMODB_ENABLE` | `false` | Start a DynamoDB Local container |
+| `CASSANDRA_ENABLE` | `false` | Start a Cassandra container |
+
+#### Go Postman / Integration Test Inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `POSTMAN_ENABLED` | `false` | Run Postman integration tests |
+| `APP_NAME` | | Postman collection filename (without extension) |
+| `SERVER_COMMAND` | | Commands to run before starting the server for Postman tests |
+
+#### Node-Specific Inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `NODE_VERSION` | `18` | Node version |
+| `NODE_PACKAGE_MANAGER` | `yarn` | Package manager: `npm` or `yarn` |
+| `DEPENDENCIES_FLAG` | | Extra flags for `npm install` / `yarn install` |
+| `TEST_COMMAND` | | Command to run Node tests |
+| `LINTER_CHECKS` | `true` | Run ESLint |
+| `PRETTIER_CHECKS` | `true` | Run Prettier |
+| `ENABLE_TESTS` | `true` | Run the test suite |
+| `USE_GAR_PKG` | `false` | Fetch packages from Google Artifact Registry instead of GitHub Packages |
+
+#### Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `PAT` | GitHub PAT for private Go/Node packages (optional) |
+| `NPM_TOKEN` | NPM token for private npm packages (Node only, optional) |
+| `REGISTRY_CREDENTIALS` | GCP service-account JSON for GAR package access (Node only, optional) |
+
+---
 
 ### stage-deploy.yaml
 
@@ -169,6 +255,97 @@ Set in **Settings > Secrets and variables > Actions > Secrets**:
 
 ## Common Patterns
 
+### Test on Pull Request, Deploy on Merge
+
+```yaml
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [development]
+  release:
+    types: [published]
+
+jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: go
+    secrets: inherit
+
+  stage:
+    if: github.ref == 'refs/heads/development'
+    needs: test
+    uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+      BUILD_COMMAND: 'go build -o main ./cmd/...'
+    secrets: inherit
+
+  prod:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: zopsmart/workflows/.github/workflows/prod-deploy.yaml@main
+    with:
+      SVC_NAME: my-service
+    secrets: inherit
+```
+
+### Go with Services and Coverage Threshold
+
+```yaml
+jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: go
+      TESTCOVERAGE_THRESHOLD: '80'
+      POSTGRES_ENABLE: true
+      REDIS_ENABLE: true
+    secrets: inherit
+```
+
+### Node with Custom Test Command
+
+```yaml
+jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: node
+      NODE_PACKAGE_MANAGER: npm
+      TEST_COMMAND: 'npm run test:ci'
+      PRETTIER_CHECKS: false
+    secrets: inherit
+```
+
+### Go with Postman Integration Tests
+
+```yaml
+jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: go
+      POSTMAN_ENABLED: true
+      APP_NAME: my-service
+      SERVER_COMMAND: './main &'
+      POSTGRES_ENABLE: true
+    secrets: inherit
+```
+
+### Go with Sub-modules
+
+```yaml
+jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: go
+      MODULES: 'pkg/auth pkg/billing pkg/notifications'
+    secrets: inherit
+```
+
 ### ConfigMap-only Updates
 
 When only the env file changes (no code changes), the workflow updates only the ConfigMap without rebuilding or redeploying:
@@ -211,6 +388,14 @@ jobs:
 
 ```yaml
 jobs:
+  test:
+    uses: zopsmart/workflows/.github/workflows/test-and-lint.yaml@main
+    with:
+      LANGUAGE: node
+      NODE_PACKAGE_MANAGER: yarn
+      TEST_COMMAND: 'yarn test --watchAll=false'
+    secrets: inherit
+
   stage:
     uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
     with:
