@@ -174,12 +174,10 @@ on:
 # JOBS
 # ===============================================================
 jobs:
-
   # ── 1a. Go tests + lint ────────────────────────────────────────────────────
   # Skipped automatically when language is 'node'
   test-go:
-    if: |
-        inputs.LANGUAGE == 'go'
+    if: ${{ inputs.LANGUAGE == 'go' && !startsWith(github.ref, 'refs/tags/v') }}
     
     uses: ./.github/workflows/_test-go.yaml
     with:
@@ -211,8 +209,7 @@ jobs:
   # ── 2b. Node tests + lint ──────────────────────────────────────────────────
   # Skipped automatically when language is 'go'
   test-node:
-    if: |
-        inputs.LANGUAGE == 'node' 
+    if: ${{ inputs.LANGUAGE == 'node' && !startsWith(github.ref, 'refs/tags/v') }}
     
     uses: ./.github/workflows/_test-node.yaml
     with:
