@@ -265,6 +265,7 @@ jobs:
     needs: [resolve-deploy, check-changes, build]
     if: |
       always() &&
+      github.ref == 'refs/heads/development' &&
       needs.check-changes.outputs.deployment == 'true' &&
       needs.build.result == 'success' &&
       needs.resolve-deploy.outputs.cluster_name != ''
@@ -293,6 +294,7 @@ jobs:
     needs: [resolve-deploy, check-changes]
     if: |
       needs.check-changes.outputs.configmap == 'true' &&
+       github.ref == 'refs/heads/development' &&
       needs.check-changes.outputs.deployment != 'true' &&
       needs.check-changes.outputs.configmap_artifact != '' &&
       needs.resolve-deploy.outputs.cluster_name != ''
