@@ -186,6 +186,7 @@ Builds, pushes, and deploys to staging on push to `development`.
 | `DEPLOY_METHOD` | `kubectl` | Deploy method: `kubectl` or `helm` |
 | `ENV_FILE_PATH` | `configs/.stage.env` | Path to env file (empty string skips configmap) |
 | `REACT_APP` | `false` | Enable React-specific configmap format |
+| `USE_GAR_PKG` | `false` | Fetch packages from Google Artifact Registry instead of GitHub Packages |
 
 ### prod-deploy.yaml
 

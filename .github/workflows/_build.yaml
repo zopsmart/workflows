@@ -102,7 +102,11 @@ on:
         required: false
         type: string
         default: ''
-
+      USE_GAR_PKG:
+        description: 'Use Google Artifact Registry for @zopsmart npm packages'
+        required: false
+        type: boolean
+        default: false    
     outputs:
       image:
         description: 'Full image URL with tag'
@@ -156,7 +160,8 @@ jobs:
           build_command: ${{ inputs.BUILD_COMMAND }}
           dependencies_flag: ${{ inputs.DEPENDENCIES_FLAG }}
           npm_token: ${{ secrets.NPM_TOKEN }}
-
+          use_gar: ${{inputs.USE_GAR_PKG}}
+          gar_credentials: ${{secrets.REGISTRY_CREDENTIALS}}
       # ============================================================
       # GENERIC SETUP
       # ============================================================
