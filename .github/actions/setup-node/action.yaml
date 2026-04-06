@@ -1,6 +1,5 @@
 name: 'Setup Node Build'
 description: 'Setup Node environment, install dependencies, and build'
-
 inputs:
   node_version:
     description: 'Node version'
@@ -17,7 +16,14 @@ inputs:
     description: 'NPM token for private packages'
     required: false
     default: ''
-
+  use_gar:
+    description: 'Use Google Artifact Registry for @zopsmart packages'
+    required: false
+    default: 'false'
+  registry_credentials:
+    description: 'GCP service account JSON for GAR'
+    required: false
+    default: ''
 runs:
   using: 'composite'
   steps:
@@ -25,17 +31,28 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node_version }}
-
     - name: Configure npm registry
       shell: bash
+      env:
+        NPM_TOKEN: ${{ inputs.npm_token }}
+        REGISTRY_CREDENTIALS: ${{ inputs.registry_credentials }}
       run: |
-        echo "@zopsmart:registry=https://npm.pkg.github.com/" >> ~/.npmrc
-        echo "//npm.pkg.github.com/:_authToken=${{ inputs.npm_token }}" >> ~/.npmrc
-
+        if [[ "${{ inputs.use_gar }}" == "true" ]]; then
+          echo "${REGISTRY_CREDENTIALS}" > /tmp/registry-credentials.json
+          gcloud auth activate-service-account --key-file=/tmp/registry-credentials.json
+          PROJECT_ID=$(jq -r '.project_id' /tmp/registry-credentials.json)
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+          echo "@zopsmart:registry=https://us-central1-npm.pkg.dev/${PROJECT_ID}/npm-packages/" >> ~/.npmrc
+          echo "//us-central1-npm.pkg.dev/${PROJECT_ID}/npm-packages/:always-auth=true" >> ~/.npmrc
+          echo "//us-central1-npm.pkg.dev/${PROJECT_ID}/npm-packages/:_authToken=${ACCESS_TOKEN}" >> ~/.npmrc
+          rm /tmp/registry-credentials.json
+        else
+          echo "@zopsmart:registry=https://npm.pkg.github.com/" >> ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+        fi
     - name: Install dependencies
       shell: bash
       run: yarn install ${{ inputs.dependencies_flag }}
-
     - name: Build
       shell: bash
       run: ${{ inputs.build_command }}

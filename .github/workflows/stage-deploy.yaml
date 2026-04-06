@@ -71,7 +71,12 @@ on:
         required: false
         type: string
         default: ''
-
+      
+      USE_GAR_PKG:
+        description: 'Use Google Artifact Registry for @zopsmart npm packages'
+        required: false
+        type: boolean
+        default: false  
       # ============================================================
       # REGISTRY
       # ============================================================
@@ -185,7 +190,6 @@ on:
       CLUSTER_CREDENTIALS:
         description: 'Fallback cluster auth (used if STAGE_CLUSTER_CREDENTIALS not provided)'
         required: false
-
 jobs:
   # ============================================================
   # RESOLVE CONFIGURATION
@@ -244,6 +248,7 @@ jobs:
       RUNTIME_VERSION: ${{ needs.detect-language.outputs.language == 'go' && inputs.GO_VERSION || inputs.NODE_VERSION }}
       DOCKER_FILE_PATH: ${{ inputs.DOCKER_FILE_PATH }}
       BUILD_ARGUMENTS: ${{ inputs.BUILD_ARGUMENTS }}
+      USE_GAR_PKG: ${{ inputs.USE_GAR_PKG }}
       REGISTRY_TYPE: ${{ needs.resolve-registry.outputs.registry_type }}
       IMAGE_REGISTRY: ${{ needs.resolve-registry.outputs.image_registry }}
       REGISTRY_PROJECT: ${{ needs.resolve-registry.outputs.registry_project }}
