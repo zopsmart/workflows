@@ -161,7 +161,7 @@ jobs:
           dependencies_flag: ${{ inputs.DEPENDENCIES_FLAG }}
           npm_token: ${{ secrets.NPM_TOKEN }}
           use_gar: ${{inputs.USE_GAR_PKG}}
-          gar_credentials: ${{secrets.REGISTRY_CREDENTIALS}}
+          registry_credentials: ${{secrets.REGISTRY_CREDENTIALS}}
       # ============================================================
       # GENERIC SETUP
       # ============================================================
