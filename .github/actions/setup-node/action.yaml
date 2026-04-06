@@ -52,13 +52,16 @@ runs:
         fi
     - name: Install dependencies
       shell: bash
-      run: if [ -f "package-lock.json" ]; then
-            echo "Found package-lock.json, using npm"
-            npm install ${{ inputs.dependencies_flag }}
-          else
-            echo "No package-lock.json found, using yarn"
-            yarn install ${{ inputs.dependencies_flag }}
-          fi
+      env:
+        DEPS_FLAG: ${{ inputs.dependencies_flag }}
+      run: |
+        if [ -f "package-lock.json" ]; then
+          echo "Found package-lock.json, using npm"
+          npm install $DEPS_FLAG
+        else
+          echo "No package-lock.json found, using yarn"
+          yarn install $DEPS_FLAG
+        fi
     - name: Build
       shell: bash
       run: ${{ inputs.build_command }}
