@@ -263,20 +263,22 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           count=${{ steps.count_nolint.outputs.nolint_count }}
-          new_url="https://img.shields.io/badge/nolint_count-${count}-orange"
+          new_badge="![nolint count](https://img.shields.io/badge/nolint_count-${count}-orange)"
 
-          if grep -qP '\!\[nolint count\]\(\K[^)]+' README.md; then
-            existing=$(grep -oP '\!\[nolint count\]\(\K[^)]+' README.md)
-            old_count=$(echo "$existing" | grep -oP 'nolint_count-\K\d+')
-            if [ "$count" != "$old_count" ]; then
-              sed -i "s|![nolint count]($existing)|![nolint count]($new_url)|g" README.md
-              echo "Badge updated."
-            else
-              echo "Badge already up-to-date."
-            fi
+          if grep -q "!\[nolint count\]" README.md; then
+            # Update existing nolint badge
+            sed -i "s|!\[nolint count\]([^)]*)|$new_badge|g" README.md
+            echo "Badge updated."
+
+          elif grep -q "!\[Coverage\]" README.md; then
+            # Append next to Coverage badge
+            sed -i "s|!\[Coverage\]([^)]*)|& $new_badge|" README.md
+            echo "Badge added next to coverage."
+
           else
-            echo "![nolint count]($new_url)" >> README.md
-            echo "Badge added."
+            # Fallback: insert after title
+            sed -i "1a $new_badge" README.md
+            echo "Coverage badge not found. Added nolint badge at top."
           fi
 
       - name: Commit nolint badge
