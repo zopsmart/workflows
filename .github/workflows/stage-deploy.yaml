@@ -253,7 +253,6 @@ jobs:
       IMAGE_REGISTRY: ${{ needs.resolve-registry.outputs.image_registry }}
       REGISTRY_PROJECT: ${{ needs.resolve-registry.outputs.registry_project }}
       REGISTRY_REPO: ${{ needs.resolve-registry.outputs.registry_repo }}
-      IMAGE_TAG: ${{ github.sha }}
       ARTIFACT_PATH: ${{ inputs.ARTIFACT_PATH }}
       EXTRA_DEPENDENCIES: ${{ inputs.EXTRA_DEPENDENCIES }}
       DEPENDENCIES_COMMAND: ${{ inputs.DEPENDENCIES_COMMAND }}

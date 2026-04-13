@@ -76,10 +76,6 @@ on:
         required: false
         type: string
         default: ''
-      IMAGE_TAG:
-        description: 'Image tag (usually git SHA)'
-        required: true
-        type: string
       # Go-specific
       ARTIFACT_PATH:
         description: '[Go] Path to built artifact (relative to DOCKER_FILE_PATH)'
@@ -133,7 +129,10 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
-
+      - name: Resolve image SHA
+        run: |
+                git fetch origin ${{ github.ref_name }} --depth=1 --quiet
+                echo "IMAGE_TAG=$(git rev-parse origin/${{ github.ref_name }})" >> "$GITHUB_ENV"
       # ============================================================
       # GO SETUP
       # ============================================================
@@ -185,7 +184,7 @@ jobs:
           registry_project: ${{ inputs.REGISTRY_PROJECT }}
           registry_repo: ${{ inputs.REGISTRY_REPO }}
           svc_name: ${{ inputs.SVC_NAME }}
-          image_tag: ${{ inputs.IMAGE_TAG }}
+          image_tag: ${{ env.IMAGE_TAG }}
           dockerfile_path: ${{ inputs.DOCKER_FILE_PATH }}
           build_arguments: |
             ${{ inputs.LANGUAGE == 'node' && format('NPM_TOKEN={0}', secrets.NPM_TOKEN) || '' }}
