@@ -6,7 +6,7 @@ Sets up Go environment, downloads dependencies, and builds the application.
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `go_version` | No | `1.20` | Go version |
+| `go_version` | No | `1.22` | Go version |
 | `build_command` | Yes | - | Build command to run |
 | `docker_file_path` | No | `.` | Dockerfile directory (build runs here) |
 | `artifact_path` | No | `main` | Built artifact path (relative to docker_file_path) |
