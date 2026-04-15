@@ -1,0 +1,60 @@
+name: "Skip Check"
+
+on:
+  workflow_call:
+    outputs:
+      trigger_run:
+        description: 'True if CI should run'
+        value: ${{ jobs.skip-check.outputs.trigger_run }}
+
+jobs:
+  skip-check:
+    name: Skip Check
+    runs-on: ubuntu-latest
+    outputs:
+      trigger_run: ${{ steps.filter.outputs.trigger_run }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve diff SHAs
+        id: shas
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.event.after }}"
+            if [[ "$BASE" =~ ^0+$ ]]; then
+              BASE=$(git rev-parse HEAD^)
+            fi
+          fi
+          echo "BASE=$BASE" >> "$GITHUB_OUTPUT"
+          echo "HEAD=$HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Filter changes against .ciignore
+        id: filter
+        shell: bash
+        run: |
+          CHANGED=$(git diff --name-only "${{ steps.shas.outputs.BASE }}" "${{ steps.shas.outputs.HEAD }}")
+
+          if [[ -z "$CHANGED" ]] || [[ ! -f ".ciignore" ]]; then
+            echo "trigger_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "" >> .git/info/exclude
+          cat .ciignore >> .git/info/exclude
+
+          IGNORED=$(echo "$CHANGED" | git check-ignore --stdin --no-index || true)
+
+          if [[ "$IGNORED" == "$CHANGED" ]]; then
+            echo "trigger_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "trigger_run=true" >> "$GITHUB_OUTPUT"
+          fi

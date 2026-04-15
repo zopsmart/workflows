@@ -174,10 +174,13 @@ on:
 # JOBS
 # ===============================================================
 jobs:
+  skip-check:
+    uses: zopsmart/workflows/.github/workflows/_skip-check.yaml@main
   # ── 1a. Go tests + lint ────────────────────────────────────────────────────
   # Skipped automatically when language is 'node'
   test-go:
-    if: ${{ inputs.LANGUAGE == 'go' && !startsWith(github.ref, 'refs/tags/v') }}
+    needs: skip-check
+    if: ${{ needs.skip-check.outputs.trigger_run == 'true' && inputs.LANGUAGE == 'go' && !startsWith(github.ref, 'refs/tags/v') }}
     
     uses: ./.github/workflows/_test-go.yaml
     with:
@@ -209,7 +212,8 @@ jobs:
   # ── 2b. Node tests + lint ──────────────────────────────────────────────────
   # Skipped automatically when language is 'go'
   test-node:
-    if: ${{ inputs.LANGUAGE == 'node' && !startsWith(github.ref, 'refs/tags/v') }}
+    needs: skip-check
+    if: ${{ needs.skip-check.outputs.trigger_run == 'true' && inputs.LANGUAGE == 'node' && !startsWith(github.ref, 'refs/tags/v') }}
     
     uses: ./.github/workflows/_test-node.yaml
     with:
