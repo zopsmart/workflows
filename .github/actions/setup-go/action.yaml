@@ -5,7 +5,7 @@ inputs:
   go_version:
     description: 'Go version'
     required: false
-    default: '1.20'
+    default: '1.22'
   build_command:
     description: 'Build command'
     required: true

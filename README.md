@@ -171,7 +171,7 @@ Builds, pushes, and deploys to staging on push to `development`.
 | `LANGUAGE` | Auto-detected | Build language: `go`, `node`, or `generic` |
 | `DOCKER_FILE_PATH` | `.` | Path to Dockerfile directory |
 | `BUILD_ARGUMENTS` | | Docker build arguments |
-| `GO_VERSION` | `1.20` | Go version (when `LANGUAGE=go`) |
+| `GO_VERSION` | `1.22` | Go version (when `LANGUAGE=go`) |
 | `NODE_VERSION` | `18` | Node version (when `LANGUAGE=node`) |
 | `REGISTRY_TYPE` | Auto-detected | Registry provider: `gar`, `gcr`, `ecr`, `acr`, `dockerhub`, `ghcr`, `custom` |
 | `IMAGE_REGISTRY` | From `vars.*` | Registry URL |
