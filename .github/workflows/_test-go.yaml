@@ -177,11 +177,14 @@ jobs:
         with:
           go-version: ${{ inputs.GO_VERSION }}
           cache: true 
-      - name: Cache Go tools
+      - name: Cache Go build + modules
         uses: actions/cache@v4
         with:
-          path: ~/go/bin
-          key: go-tools-${{ runner.os }}-gocovmerge
+          path: |
+            ~/go/bin
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
       - name: Add DB schema
         if: ${{ inputs.ADD_SCHEMA }}
         run: ${{ inputs.SCHEMA_COMMAND }}
@@ -201,7 +204,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: ${{ inputs.LINTER_VERSION }}
-          args: --timeout ${{ inputs.LINTER_TIMEOUT }}
+          args: --timeout ${{ inputs.LINTER_TIMEOUT }} --modules-download-mode=readonly -j 4
 
       - name: Test
         run: |
