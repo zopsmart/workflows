@@ -176,15 +176,12 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ inputs.GO_VERSION }}
-          cache: true 
-      - name: Cache Go build + modules
+          cache: true
+      - name: Cache Go bin tools
         uses: actions/cache@v4
         with:
-          path: |
-            ~/go/bin
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-cache-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          path: ~/go/bin
+          key: go-bin-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
       - name: Add DB schema
         if: ${{ inputs.ADD_SCHEMA }}
         run: ${{ inputs.SCHEMA_COMMAND }}
