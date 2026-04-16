@@ -202,6 +202,7 @@ jobs:
         with:
           version: ${{ inputs.LINTER_VERSION }}
           args: --timeout ${{ inputs.LINTER_TIMEOUT }} --modules-download-mode=readonly -j 4
+          skip-config-verify: true 
 
       - name: Test
         run: |
