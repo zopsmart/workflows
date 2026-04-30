@@ -198,7 +198,7 @@ jobs:
         run: ${{ inputs.DEPENDENCIES_COMMAND }}
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: ${{ inputs.LINTER_VERSION }}
           args: --timeout ${{ inputs.LINTER_TIMEOUT }} --modules-download-mode=readonly -j 4
