@@ -196,14 +196,31 @@ jobs:
       - name: Extra dependencies
         if: ${{ inputs.EXTRA_DEPENDENCIES }}
         run: ${{ inputs.DEPENDENCIES_COMMAND }}
+      - name: Cache golangci-lint
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/golangci-lint
+          key: golangci-${{ runner.os }}-${{ inputs.LINTER_VERSION }}
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: ${{ inputs.LINTER_VERSION }}
-          args: --timeout ${{ inputs.LINTER_TIMEOUT }} --modules-download-mode=readonly -j 4
-          skip-config-verify: true 
+        run: |
+          set -e
+          VERSION="${{ inputs.LINTER_VERSION }}"
+          BIN="$HOME/.local/bin/golangci-lint"
+          mkdir -p "$HOME/.local/bin"
 
+          if [ ! -f "$BIN" ]; then
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+              | sh -s -- -b "$HOME/.local/bin" $VERSION
+          fi
+
+          $BIN version
+
+          MAJOR=$(echo "$VERSION" | cut -d. -f1 | tr -d 'v')
+          ARGS="--timeout ${{ inputs.LINTER_TIMEOUT }} --modules-download-mode=readonly --issues-exit-code=1"
+          [ "$MAJOR" -lt 2 ] && ARGS="$ARGS -j $(nproc)"
+
+          $BIN run $ARGS
       - name: Test
         run: |
           mkdir -p temp/build
