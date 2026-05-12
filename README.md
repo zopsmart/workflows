@@ -187,6 +187,9 @@ Builds, pushes, and deploys to staging on push to `development`.
 | `ENV_FILE_PATH` | `configs/.stage.env` | Path to env file (empty string skips configmap) |
 | `REACT_APP` | `false` | Enable React-specific configmap format |
 | `USE_GAR_PKG` | `false` | Fetch packages from Google Artifact Registry instead of GitHub Packages |
+| `SKIP_HOST_BUILD` | `false` | **[Go]** Skip the host-side `go build` step. Use when the Dockerfile compiles from source itself (the common pattern) — the host artifact is otherwise dead weight that the Docker stage never consumes. Saves 1–3 min per build. See [Build performance](#build-performance). |
+| `CACHE_DEPENDENCY_PATH` | | **[Go]** Path to `go.sum` for the module cache key. Set this when `go.mod` is not at the repo root (e.g. `backend/worker/go.sum`); otherwise the cache silently misses on every run. |
+| `DOCKER_CACHE_SCOPE` | `SVC_NAME` | Scope key for the BuildKit GHA layer cache. Each service gets its own scope by default so sibling builds don't evict each other. Set to empty string to disable caching. |
 
 ### prod-deploy.yaml
 
@@ -346,6 +349,48 @@ jobs:
       MODULES: 'pkg/auth pkg/billing pkg/notifications'
     secrets: inherit
 ```
+
+### Build performance
+
+The default `stage-deploy.yaml` is conservative: it both runs `go build` on
+the host **and** lets the Dockerfile rebuild from source inside BuildKit.
+That preserves behavior for callers whose Dockerfile expects a prebuilt
+binary (`COPY main /app/main`). For the more common pattern — a multi-stage
+Dockerfile that runs `go build` inside a `golang` builder image — the host
+compile is redundant and adds 1–3 minutes per run.
+
+Recommended config for the multi-stage Dockerfile pattern:
+
+```yaml
+jobs:
+  stage:
+    uses: zopsmart/workflows/.github/workflows/stage-deploy.yaml@main
+    with:
+      SVC_NAME: worker
+      BUILD_COMMAND: 'go build -o main .'
+      DOCKER_FILE_PATH: backend/worker
+      SKIP_HOST_BUILD: true                          # Dockerfile builds from source
+      CACHE_DEPENDENCY_PATH: backend/worker/go.sum   # subdir go.mod
+      # DOCKER_CACHE_SCOPE: worker                   # already the default (= SVC_NAME)
+    secrets: inherit
+```
+
+What each does:
+
+- **`SKIP_HOST_BUILD: true`** — skips the host `go build` step entirely.
+- **`CACHE_DEPENDENCY_PATH`** — passed to `actions/setup-go`. When `go.mod`
+  lives in a subdirectory, omitting this makes the action log
+  `Restore cache failed: Dependencies file is not found` and silently
+  miss the module cache on every run.
+- **BuildKit GHA layer cache** — wired automatically by
+  `docker-build-push`. `cache-from`/`cache-to` use `type=gha` scoped per
+  service, so the base-image layers, `apk add`/`apt-get`, `go mod
+  download`, and the `--mount=type=cache` Go build cache survive across
+  runs. On code-only changes this typically turns a 5-minute build into
+  ~1–2 minutes.
+
+If you need a from-scratch build (e.g. to verify the image without cached
+layers), set `DOCKER_CACHE_SCOPE: ''`.
 
 ### ConfigMap-only Updates
 

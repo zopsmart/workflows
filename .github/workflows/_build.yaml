@@ -102,7 +102,22 @@ on:
         description: 'Use Google Artifact Registry for @zopsmart npm packages'
         required: false
         type: boolean
-        default: false    
+        default: false
+      SKIP_HOST_BUILD:
+        description: '[Go] Skip the host-side go build step. Use when the Dockerfile compiles from source itself (the common pattern). Saves 1-3 minutes per build by avoiding a redundant compile that the Docker stage never consumes.'
+        required: false
+        type: boolean
+        default: false
+      CACHE_DEPENDENCY_PATH:
+        description: '[Go] Path to go.sum for the module cache key. Set this when go.mod is not at the repo root (e.g. backend/worker/go.sum). Without it, actions/setup-go warns "Dependencies file is not found" and skips the cache.'
+        required: false
+        type: string
+        default: ''
+      DOCKER_CACHE_SCOPE:
+        description: 'Scope key for the BuildKit GHA cache. Defaults to SVC_NAME so each service gets its own cache. Set to empty string to disable caching.'
+        required: false
+        type: string
+        default: ''
     outputs:
       image:
         description: 'Full image URL with tag'
@@ -137,7 +152,7 @@ jobs:
       # GO SETUP
       # ============================================================
       - name: Setup and Build Go
-        if: inputs.LANGUAGE == 'go'
+        if: inputs.LANGUAGE == 'go' && inputs.SKIP_HOST_BUILD != true
         uses: zopsmart/workflows/.github/actions/setup-go@main
         with:
           go_version: ${{ inputs.RUNTIME_VERSION || '1.22' }}
@@ -147,6 +162,7 @@ jobs:
           extra_dependencies: ${{ inputs.EXTRA_DEPENDENCIES }}
           dependencies_command: ${{ inputs.DEPENDENCIES_COMMAND }}
           pat: ${{ secrets.PAT }}
+          cache_dependency_path: ${{ inputs.CACHE_DEPENDENCY_PATH }}
 
       # ============================================================
       # NODE SETUP
@@ -197,3 +213,4 @@ jobs:
           azure_tenant_id: ${{ inputs.AZURE_TENANT_ID }}
           github_actor: ${{ github.actor }}
           github_token: ${{ github.token }}
+          cache_scope: ${{ inputs.DOCKER_CACHE_SCOPE }}

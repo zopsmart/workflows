@@ -57,6 +57,25 @@ on:
         required: false
         type: string
         default: ''
+      SKIP_HOST_BUILD:
+        description: '[Go] Skip the host-side go build step. Use when the Dockerfile compiles from source (the common pattern). Saves 1-3 minutes per build by avoiding a redundant compile that the Docker stage never consumes.'
+        required: false
+        type: boolean
+        default: false
+      CACHE_DEPENDENCY_PATH:
+        description: '[Go] Path to go.sum for the module cache key (e.g. backend/worker/go.sum). Needed when go.mod is not at repo root.'
+        required: false
+        type: string
+        default: ''
+
+      # ============================================================
+      # BUILD - Docker cache
+      # ============================================================
+      DOCKER_CACHE_SCOPE:
+        description: 'Scope key for the BuildKit GHA cache. Defaults to SVC_NAME so each service has its own cache. Set to empty string to disable caching.'
+        required: false
+        type: string
+        default: ''
 
       # ============================================================
       # BUILD - Node specific
@@ -257,6 +276,9 @@ jobs:
       EXTRA_DEPENDENCIES: ${{ inputs.EXTRA_DEPENDENCIES }}
       DEPENDENCIES_COMMAND: ${{ inputs.DEPENDENCIES_COMMAND }}
       DEPENDENCIES_FLAG: ${{ inputs.DEPENDENCIES_FLAG }}
+      SKIP_HOST_BUILD: ${{ inputs.SKIP_HOST_BUILD }}
+      CACHE_DEPENDENCY_PATH: ${{ inputs.CACHE_DEPENDENCY_PATH }}
+      DOCKER_CACHE_SCOPE: ${{ inputs.DOCKER_CACHE_SCOPE }}
     secrets:
       PAT: ${{ secrets.PAT }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -22,6 +22,7 @@ Logs in to a container registry and builds/pushes a Docker image.
 | `azure_tenant_id` | Conditional | - | Azure tenant ID for ACR |
 | `github_actor` | No | - | Fallback username for `dockerhub`/`ghcr`/`custom` |
 | `github_token` | No | - | Fallback credentials for GHCR |
+| `cache_scope` | No | `svc_name` | Scope key for the BuildKit GHA cache backend. Defaults to `svc_name` so each service has its own cache. Pass an explicit value to share a cache (e.g. multi-arch builds of the same service). Set to empty string to disable caching. |
 
 ## Outputs
 
@@ -90,11 +91,36 @@ Logs in to a container registry and builds/pushes a Docker image.
 
 ## How It Works
 
-This action combines three steps:
+This action combines four steps:
 
 1. **Resolve image path** - Uses `resolve-image-path` action to construct the full image URL
 2. **Login to registry** - Uses `registry-login` action to authenticate
-3. **Build and push** - Uses `docker/build-push-action` to build and push the image
+3. **Set up Buildx** - Configures BuildKit so the GHA cache backend is available
+4. **Build and push** - Uses `docker/build-push-action` to build and push the image, wired to `type=gha` `cache-from`/`cache-to` scoped by service
+
+## Layer caching
+
+The action exports BuildKit layer cache to the GitHub Actions cache backend
+(`type=gha`) and restores from it on the next run. By default the cache is
+scoped per service (`cache_scope` defaults to `svc_name`), so api/worker/
+orchestrator builds in the same repo do not evict each other.
+
+On a typical code-only change this saves the base-image `apk add`/`apt-get`
+layers, `go mod download`, and lets the build's `--mount=type=cache`
+mounts (e.g. `/root/.cache/go-build`, `/go/pkg/mod`) survive across runs —
+turning multi-minute cold builds into well under a minute.
+
+Things to know:
+
+- The GHA cache is per branch with fallback to the default branch, per
+  GitHub's standard cache scoping rules. The first run on a new branch
+  warms from the default branch's cache.
+- Total cache is capped at 10 GB per repo; least-recently-used entries
+  are evicted automatically.
+- Pass `cache_scope: ''` to disable caching for a specific build (e.g.
+  if you intentionally want a from-scratch image).
+- Pass a custom `cache_scope` to share cache across multiple builds of
+  the same content (e.g. `cache_scope: my-service-multiarch`).
 
 ## Dockerfile Location
 
