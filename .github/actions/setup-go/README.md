@@ -13,6 +13,7 @@ Sets up Go environment, downloads dependencies, and builds the application.
 | `extra_dependencies` | No | `false` | Enable extra dependencies step |
 | `dependencies_command` | No | - | Commands to install extra dependencies |
 | `pat` | No | - | GitHub PAT for private repos |
+| `cache_dependency_path` | No | - | Path to `go.sum` for the module cache key. Required when `go.mod` is not at the repo root (e.g. `backend/worker/go.sum`); otherwise `actions/setup-go` cannot find a dependency file and silently skips the cache. |
 
 ## Usage
 
@@ -72,12 +73,20 @@ When Dockerfile is in a subdirectory:
     build_command: 'go build -o main ./cmd/...'
     docker_file_path: './services/api'
     artifact_path: 'main'
+    cache_dependency_path: './services/api/go.sum'
 ```
 
 The action:
 1. Changes to `docker_file_path` directory
 2. Runs the build command
 3. Moves the artifact back to the root directory
+
+> **Module cache for subdirectory go.mod**
+> When `go.mod` is not at the repo root, you must pass `cache_dependency_path`
+> pointing at the matching `go.sum`. Without it `actions/setup-go` logs
+> `Restore cache failed: Dependencies file is not found` and the module cache
+> is never restored — turning what should be a few-second `go mod download`
+> into a full re-fetch on every run.
 
 ## What It Does
 
