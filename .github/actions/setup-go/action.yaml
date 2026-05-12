@@ -29,6 +29,10 @@ inputs:
     description: 'GitHub PAT for private repos'
     required: false
     default: ''
+  cache_dependency_path:
+    description: 'Path to go.sum for the module cache key. Required when go.mod is not at the repo root (e.g. backend/worker/go.sum), otherwise actions/setup-go cannot find it and skips the cache.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -37,6 +41,7 @@ runs:
       uses: actions/setup-go@v6
       with:
         go-version: ${{ inputs.go_version }}
+        cache-dependency-path: ${{ inputs.cache_dependency_path }}
 
     - name: Get dependencies
       shell: bash
