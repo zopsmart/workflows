@@ -58,7 +58,7 @@ jobs:
       - name: Find Modified Files (commit mode)
         if: inputs.COMPARE_MODE == 'commit'
         id: files-commit
-        uses: masesgroup/retrieve-changed-files@v2
+        uses: masesgroup/retrieve-changed-files@v4
 
       - name: Find Modified Files (tag mode)
         if: inputs.COMPARE_MODE == 'tag' && inputs.PREVIOUS_TAG != ''

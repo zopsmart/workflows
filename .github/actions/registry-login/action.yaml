@@ -216,7 +216,7 @@ runs:
     # -- GAR/GCR Login --
     - name: Login to GAR/GCR
       if: inputs.registry_type == 'gar' || inputs.registry_type == 'gcr'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ steps.registry.outputs.image_registry }}
         username: _json_key
@@ -233,14 +233,14 @@ runs:
 
     - name: Login to ECR
       if: inputs.registry_type == 'ecr'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ steps.registry.outputs.image_registry }}
 
     # -- ACR Login --
     - name: Login to ACR
       if: inputs.registry_type == 'acr'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ steps.registry.outputs.image_registry }}
         username: ${{ steps.creds.outputs.azure_client_id }}
@@ -249,7 +249,7 @@ runs:
     # -- Docker Hub Login --
     - name: Login to Docker Hub
       if: inputs.registry_type == 'dockerhub'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         username: ${{ steps.creds.outputs.username }}
         password: ${{ steps.creds.outputs.password }}
@@ -257,7 +257,7 @@ runs:
     # -- GHCR Login --
     - name: Login to GHCR
       if: inputs.registry_type == 'ghcr'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ghcr.io
         username: ${{ steps.creds.outputs.username }}
@@ -266,7 +266,7 @@ runs:
     # -- Custom Registry Login --
     - name: Login to custom registry
       if: inputs.registry_type == 'custom'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ steps.registry.outputs.image_registry }}
         username: ${{ steps.creds.outputs.username }}
