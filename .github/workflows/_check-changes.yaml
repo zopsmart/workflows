@@ -59,6 +59,8 @@ jobs:
         if: inputs.COMPARE_MODE == 'commit'
         id: files-commit
         uses: masesgroup/retrieve-changed-files@v4
+        with:
+          format: 'csv'
 
       - name: Find Modified Files (tag mode)
         if: inputs.COMPARE_MODE == 'tag' && inputs.PREVIOUS_TAG != ''
@@ -78,6 +80,7 @@ jobs:
             FILES="${{ steps.files-tag.outputs.all }}"
           else
             FILES="${{ steps.files-commit.outputs.all }}"
+            FILES="${FILES//,/ }"  # convert CSV to space-separated
           fi
 
           # Initialize outputs
