@@ -27,7 +27,7 @@ runs:
         CURRENT_TAG="${{ inputs.tag }}"
 
         # Get all version tags sorted semantically (descending)
-        TAGS=$(git tag -l 'v*' --sort=-v:refname)
+        TAGS=$(git tag | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV)
 
         # Find previous tag (first tag that's not the current one)
         PREVIOUS_TAG=""
