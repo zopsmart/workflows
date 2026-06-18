@@ -119,7 +119,7 @@ jobs:
         run: ${{ inputs.TEST_COMMAND }}
 
       - name: Generate coverage badges
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ENABLE_TESTS
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && inputs.ENABLE_TESTS
         run: |
           if [ "${{ inputs.PACKAGE_MANAGER }}" = "yarn" ]; then
             CI=false yarn make-badges
@@ -128,7 +128,7 @@ jobs:
           fi
 
       - name: Commit coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ENABLE_TESTS
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && inputs.ENABLE_TESTS
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
@@ -136,7 +136,7 @@ jobs:
             git commit -a -m "Update badges in README.md"
 
       - name: Push coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && inputs.ENABLE_TESTS
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && inputs.ENABLE_TESTS
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.PAT }}

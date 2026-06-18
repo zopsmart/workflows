@@ -262,7 +262,7 @@ jobs:
           fi
 
       - name: Generate and commit coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' ||  github.ref == 'refs/heads/master') 
         run: |
           go install github.com/AlexBeauchemin/gobadge@latest
           gobadge -filename=temp/c.out -target="$(pwd)/README.md"
@@ -275,13 +275,13 @@ jobs:
 
       - name: Count nolint occurrences
         id: count_nolint
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' ||  github.ref == 'refs/heads/master')
         run: |
           count=$(grep -r -E '//\s*nolint' . | wc -l)
           echo "nolint_count=$count" >> "$GITHUB_OUTPUT"
 
       - name: Update README nolint badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: |
           count=${{ steps.count_nolint.outputs.nolint_count }}
           new_badge="![nolint count](https://img.shields.io/badge/nolint_count-${count}-orange)"
@@ -303,7 +303,7 @@ jobs:
           fi
 
       - name: Commit nolint badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name  "GitHub-Action"
@@ -311,7 +311,7 @@ jobs:
             git commit README.md -m "Update nolint count badge in README.md"
 
       - name: Push badge commits
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: ad-m/github-push-action@v0.8.0
         with:
           github_token: ${{ github.token }}
